@@ -1,0 +1,210 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+---
+title: "Fig1 R code"
+output: html_document
+
+```{r}
+#explaination for the code for the fig1 a-g
+#1)install the packages and then library
+#2)import the world maps
+#3)import the data we use here
+#4)make figure1a-g; a,geographic distribution of alien assemblages;b-g, histograms
+```
+#1)Install the package
+```{r setup, include=FALSE}
+#install.packages("tidyverse")
+#install.packages("data.table")
+#install.packages("rworldmap")
+#install.packages("maps")
+#install.package("ggplot2")
+library(tidyverse)
+library(data.table)
+library(rworldmap)
+library(maps)
+library(ggplot2)
+```
+#2)world maps
+```{r}
+world_map <- map_data("world")
+map <- ggplot() + coord_fixed() +xlab("x") + ylab("y") + 
+                    geom_polygon(data=world_map, aes(x=long, y=lat, group=group), 
+                                     fill="grey")
+map
+
+```
+#3)import data
+```{r}
+#read the file
+db<-read.csv(file = '/Users/daijunliu/Vienna work/PREDICTS/2022.03.03 for the figures/upload/data.csv',sep=";")
+#the alien ratio is wrong
+db$alien_all<-with(db,alien_freq/pred_freq)
+db<-db%>%mutate(PA=case_when(alien_freq>=1 ~1,
+                              alien_freq<1 ~ 0))
+```
+#4)fig1
+##fig.1a distribution
+```{r}
+names(db)
+#1) find no alien site
+all_perdata_all<-db %>% dplyr::select(Longitude,Latitude) %>%distinct()
+all_perdata_alien<-db%>%filter(PA==1)%>%
+                  dplyr::select(Longitude,Latitude,alien_all)%>%distinct()
+#make the fig 1a
+all_a_num<-map+ 
+  geom_point(data=all_perdata_all,aes(x=Longitude, y=Latitude),
+             shape=1,color='black',stroke=0.2)+
+  geom_point(data=all_perdata_alien,aes(x=Longitude,y=Latitude,
+             size=alien_all),color='blue',shape=1)+
+    scale_y_continuous(name="Latitude°",breaks=seq(-80,80,40))+
+  scale_x_continuous(name = "Longitude°",
+             breaks=seq(-160,160,80)) +
+  scale_size_continuous(breaks =c(0.05,0.25,0.5,0.75,1),name="Alien proportion")+
+  theme_bw()+
+  theme(
+        panel.border=element_rect(fill=NULL,colour='black',linetype=1,size=0.5),
+        axis.ticks.length=unit(0.08,"inch"),
+        plot.title = element_text(size = 15),
+        legend.text = element_text(colour="black", size = 10),
+        legend.background = element_blank(),
+        legend.key=element_blank(),
+        axis.text.x = element_text(colour = "black", size = 12), 
+        axis.text.y = element_text(colour = "black", size = 12),
+        axis.title.x = element_text(colour='black',size=14,vjust=1),
+        axis.title.y = element_text(colour='black',size=14,vjust=1),
+        legend.position = c(0.15, 0.33))
+all_a_num
+#save the fig1
+#ggsave(all_a_num,filename = '/xx/fig1a.tiff',width = 7.5,height =6.5,compression="lzw",dpi=200)
+```
+##fig.1b all taxa
+```{r}
+names(db)
+alien_all<-db%>%filter(PA==1)%>%
+                  dplyr::select(alien_freq,taxa,PA)%>%
+  ggplot(aes(x=alien_freq)) +
+  geom_histogram(fill="white", color="blue",binwidth=1)+
+  labs(x="Number of alien species", y = "Count")+
+  scale_y_continuous(limits=c(0,1500),breaks=seq(0,1500,500))+
+  scale_x_continuous(limits=c(0,30),breaks=seq(0,30,10))+
+  theme_linedraw()+
+  theme(
+        #legend.key=element_blank(), 
+        axis.ticks.length=unit(0.08,"inch"),
+        axis.text.x = element_text(colour = "black", size = 10), 
+        axis.text.y = element_text(colour = "black", size = 10),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank())
+alien_all
+#ggsave(alien_all,filename = '/xx/hist_all.tiff',compression='lzw',width = 2.6,height = 2,dpi=200)
+```
+##fig.1c Ants
+```{r}
+alien_ant<-db%>%filter(PA==1)%>%subset(taxa=="Ants")%>%
+                  dplyr::select(alien_freq,taxa,PA)%>%
+  ggplot(aes(x=alien_freq)) +
+  geom_histogram(fill="white", color="blue",binwidth=1)+
+  labs(x="Number of alien species", y = "Count")+
+  scale_y_continuous(limits=c(0,90),breaks=seq(0,90,30))+
+  scale_x_continuous(limits=c(0,30),breaks=seq(0,30,10))+
+  theme_linedraw()+
+  theme(
+        #legend.key=element_blank(), 
+        axis.ticks.length=unit(0.08,"inch"),
+        axis.text.x = element_text(colour = "black", size = 10), 
+        axis.text.y = element_text(colour = "black", size = 10),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank())
+alien_ant
+#ggsave(alien_ant,filename = '/xx/hist_ant.tiff',compression='lzw',width = 2.5,height = 2,dpi=200)
+
+```
+##fig.1d Birds
+```{r}
+alien_birds<-db%>%filter(PA==1)%>%subset(taxa=="Birds")%>%
+                  dplyr::select(alien_freq,taxa,PA)%>%
+  ggplot(aes(x=alien_freq)) +
+  geom_histogram(fill="white", color="blue",binwidth=1)+
+  labs(x="Number of alien species", y = "Count")+
+  scale_y_continuous(limits=c(0,320),breaks=seq(0,300,100))+
+  scale_x_continuous(limits=c(0,30),breaks=seq(0,30,10))+
+  theme_linedraw()+
+  theme(
+        #legend.key=element_blank(), 
+        axis.ticks.length=unit(0.08,"inch"),
+        axis.text.x = element_text(colour = "black", size = 10), 
+        axis.text.y = element_text(colour = "black", size = 10),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank())
+alien_birds
+#ggsave(alien_birds,filename = '/xx/hist_birds.tiff',compression='lzw',width = 2.5,height = 2,dpi=200)
+```
+##fig.1e Mammals
+```{r}
+alien_mam<-db%>%filter(PA==1)%>%subset(taxa=="Mammals")%>%
+                  dplyr::select(alien_freq,taxa,PA)%>%
+  ggplot(aes(x=alien_freq)) +
+  geom_histogram(fill="white", color="blue",binwidth=1)+
+  labs(x="Number of alien species", y = "Count")+
+  scale_y_continuous(limits=c(0,300),breaks=seq(0,300,100))+
+  scale_x_continuous(limits=c(0,30),breaks=seq(0,30,10))+
+  theme_linedraw()+
+  theme(
+        #legend.key=element_blank(), 
+        axis.ticks.length=unit(0.08,"inch"),
+        axis.text.x = element_text(colour = "black", size = 10), 
+        axis.text.y = element_text(colour = "black", size = 10),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank())
+alien_mam
+#ggsave(alien_mam,filename = '/xx/hist_mam.tiff',compression='lzw',width = 2.5,height = 2,dpi=200)
+
+```
+##fig.1f Spiders
+```{r}
+alien_spi<-db%>%filter(PA==1)%>%subset(taxa=="Spiders")%>%
+                  dplyr::select(alien_freq,taxa,PA)%>%
+  ggplot(aes(x=alien_freq)) +
+  geom_histogram(fill="white", color="blue",binwidth=1)+
+  labs(x="Number of alien species", y = "Count")+
+  scale_y_continuous(limits=c(0,120),breaks=seq(0,120,40))+
+  scale_x_continuous(limits=c(0,30),breaks=seq(0,30,10))+
+  theme_linedraw()+
+  theme(
+        #legend.key=element_blank(), 
+        axis.ticks.length=unit(0.08,"inch"),
+        axis.text.x = element_text(colour = "black", size = 10), 
+        axis.text.y = element_text(colour = "black", size = 10),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank())
+alien_spi
+#ggsave(alien_spi,filename = '/xx/hist_spi.tiff',compression='lzw',width = 2.5,height = 2,dpi=200)
+
+```
+##fig.1g Vascular plants
+```{r}
+alien_plant<-db%>%filter(PA==1)%>%subset(taxa=="Vascular plants")%>%
+                  dplyr::select(alien_freq,taxa,PA)%>%
+  ggplot(aes(x=alien_freq)) +
+  geom_histogram(fill="white", color="blue",binwidth=1)+
+  labs(x="Number of alien species", y = "Count")+
+  scale_y_continuous(limits=c(0,600),breaks=seq(0,600,200))+
+  scale_x_continuous(limits=c(0,30),breaks=seq(0,30,10))+
+  theme_linedraw()+
+  theme(
+        #legend.key=element_blank(), 
+        axis.ticks.length=unit(0.08,"inch"),
+        axis.text.x = element_text(colour = "black", size = 10), 
+        axis.text.y = element_text(colour = "black", size = 10),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank())
+alien_plant
+ggsave(alien_plant,filename = '/xx/hist_plant.tiff',compression='lzw',width = 2.5,height = 2,dpi=200)
+```
+
+
+
+
