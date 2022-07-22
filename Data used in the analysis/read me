@@ -1,1 +1,5 @@
-This is the species level data by combinning the local assembalges of PREDICTS and reigonal alien species data
+This is the species level data by combinning the local assembalges of PREDICTS and reigonal alien species data (Ants, Birds, Mammals, Spiders and 
+Vascular plants). 
+These five taxa were presented here separately.
+The columns are similar with the ones in PREDICTS (added in the folder), except the last column (pg) that indicates the species in local assembalges
+whether it is alien or not (predicts_invasive is alien, ipredicts_NA is not).
