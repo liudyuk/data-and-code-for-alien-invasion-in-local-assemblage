@@ -1,0 +1,480 @@
+---
+title: "test the invasion in island"
+output: html_document
+---
+
+```{r}
+#explain the code for testing the invasion in islands.
+```
+
+
+##import the packages
+```{r}
+#install the packages and library
+#install.packages("lme4")
+#install.packages("emmeans")
+#install.packages("tidyverse")
+#install.packages("data.table")
+#install.packages("lme4")
+#install.packages("ggplot2")
+#install.packages("DHARMa")
+library(lme4)
+library(data.table)
+library(emmeans)
+library(multcomp)
+library(lme4)
+library(ggplot2)
+library(tidyverse)
+library(DHARMa)
+```
+#import the data
+```{r}
+db<-read.csv(file = '/.../dt.22.03.2022.csv',sep=";",stringsAsFactors=T)
+#the alien ratio is wrong
+db$alien_all<-with(db,alien_freq/pred_freq)
+levels(as.factor(db$LU))
+db$LU<-
+  factor(db$LU,c("Primary","SV","Plantation","Pasture","Cropland","Urban"))
+levels(as.factor(db$LUI))
+db$LUI<-
+  factor(db$LUI,c("Cannot decide","Minimal use","Light use","Intense use"))
+#run on the right
+db%>%summarise(tax_count=plyr::count(taxa))
+# Alien presence/absence for logistical model. 
+db$Alien.presence <- as.logical(db$alien_freq)
+#check the biomes of local assemblages
+db$Biome<-as.factor(db$Biome)
+levels(db$Biome)
+#there are 184 assemblages are belonging to boreal and tundra, merge into temperate
+levels(db$Biome) <- c("Temperate", "Temperate","Tropic","Tropic",
+                      "Tropic","Temperate","Temperate","Temperate",
+                      "Temperate","Tropic","Tropic","Tropic",
+                      "Tropic","Temperate")
+#add the site is island or continents
+levels(db$Country)
+#add all of the continent
+db$island_continent<-with(db,"continent")
+#then revise them by checking
+db$island_continent<-as.character(db$island_continent)
+db$island_continent[db$Country == "Comoros"] <- "Island"
+db$island_continent[db$Country == "Comoros"] <- "Island"
+db$island_continent[db$Country == "Indonesia"] <- "Island"
+db$island_continent[db$Country == "Ireland"] <- "Island"
+db$island_continent[db$Country == "Japan"] <- "Island"
+db$island_continent[db$Country == "Madagascar"] <- "Island"
+db$island_continent[db$Country == "New Zealand"] <- "Island"
+
+db$island_continent[db$Country == "Papua New Guinea"] <- "Island"
+db$island_continent[db$Country == "Philippines"] <- "Island"
+db$island_continent[db$Country == "Puerto Rico"] <- "Island"
+
+db$island_continent[db$Country == "Sao Tome and Principe"] <- "Island"
+db$island_continent[db$Country == "Solomon Islands"] <- "Island"
+db$island_continent[db$Country == "Sri Lanka"] <- "Island"
+db$island_continent[db$Country == "United Kingdom"] <- "Island"
+
+#check the coutries which has data in the islands 
+db$island_continent[db$Country == "United States"  & db$Longitude<(-150)] <- "Island"
+db$island_continent[db$Country == "Malaysia"  & db$Longitude>(110)] <- "Island"
+```
+
+
+```{r}
+#add the sampling size for the local assemblages
+# check predict
+df.sites<- fread(file = '/.../sites.csv', header = T,na.strings=c("","NA"))
+#add the lat and lon since some studies do not have
+df.sites[df.sites$Reference=="Garden et al. 2010","Longitude"]<-153.01
+df.sites[df.sites$Reference=="Garden et al. 2010","Latitude"]<--27.28
+
+df.sites[df.sites$Reference=="Gardner et al. 2008","Longitude"]<--52
+df.sites[df.sites$Reference=="Gardner et al. 2008","Latitude"]<--1
+#Kapoor 2008
+df.sites[df.sites$Reference=="Kapoor 2008","Longitude"]<-76.49
+df.sites[df.sites$Reference=="Kapoor 2008","Latitude"]<-10.2
+#Rosselli 2011
+df.sites[df.sites$Reference=="Rosselli 2011","Longitude"]<- -73.58
+df.sites[df.sites$Reference=="Rosselli 2011","Latitude"]<- 4.58
+
+df.sites[df.sites$Reference=="Liu et al. 2012","Longitude"]<- 40.47
+df.sites[df.sites$Reference=="Liu et al. 2012","Latitude"]<- 114.47
+names(df.sites)
+names(df.sites)[25]<-c("size")
+df.sites.local<-df.sites%>%subset(select=c(20,25))%>%distinct(SSBS, size, .keep_all = TRUE)
+
+#merge teh data with local size
+db.size<-merge(db,df.sites.local,by="SSBS",all.x=T)
+#logged the plot size in the model
+db.size$size<-with(db.size,log(size))
+hist(db.size$size)
+```
+
+
+
+#1) non-native incidence
+```{r}
+db.full.test <- subset(db.size,!(LU %in% "Urban" & LUI %in%"Intense use"))
+#1change the refernce for LU
+levels(db.full.test$LU)
+db.full.test$LU = factor(db.full.test$LU, levels=c("Primary","SV","Plantation","Cropland","Pasture","Urban"))
+db.full.test$LU = factor(db.full.test$LU, levels=c("Pasture","Urban","Cropland", "Plantation","SV", "Primary"))
+levels(db.full.test$LUI)
+db.full.test$LUI = factor(db.full.test$LUI, levels=c("Cannot decide","Minimal use","Light use","Intense use"))
+db.full.test$LUI = factor(db.full.test$LUI, levels=c("Intense use", "Light use","Minimal use","Cannot decide"))
+```
+
+#1_1) test two models
+```{r}
+#1 the model in the paper, with SS/SSB in the random factor
+m_paper <- glmer(Alien.presence ~ LU*LUI + (1|SS/SSB) , 
+          data = db.full.test , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , 
+                                 optCtrl = list(maxfun = 1e5)),
+           nAGQ = 1 , subset = as.vector(db.full.test$LUI != "Cannot decide"))
+#2 adding plot size into the model
+m_size <- glmer(Alien.presence ~ LU*LUI +size+ (1|SS/SSB) , 
+          data = db.full.test , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , 
+                                 optCtrl = list(maxfun = 1e5)),
+           nAGQ = 1 , subset = as.vector(db.full.test$LUI != "Cannot decide"))
+
+anova(m_paper,m_size)# p=0.968, no significance for the two models
+summary(m_paper);summary(m_size) #No differences for the variables, see below
+
+#conclusion: There is no significance for the size (p=0.821651) when adding the size into the statistical model. See below.
+```
+#model result
+```{r}
+#1) summary result for m_paper= glmer(Alien.presence ~ LU*LUI + (1|SS/SSB)
+#Fixed effects:
+#                            Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)                  -3.2887     0.6578  -5.000 5.74e-07 ***
+#LUUrban                      -0.4275     0.5452  -0.784 0.432921    
+#LUCropland                    1.3355     0.5835   2.289 0.022107 *  
+#LUPlantation                 -0.2572     0.6309  -0.408 0.683527    
+#LUSV                         -0.4236     0.6200  -0.683 0.494506    
+#LUPrimary                    -0.7766     0.6062  -1.281 0.200124    
+#LUILight use                 -0.1913     0.5240  -0.365 0.715050    
+#LUIMinimal use                0.5140     0.5582   0.921 0.357201    
+#LUUrban:LUILight use          1.0324     0.6864   1.504 0.132582    
+#LUCropland:LUILight use      -2.3252     0.6934  -3.353 0.000799 ***
+#LUPlantation:LUILight use     0.7785     0.6863   1.134 0.256665    
+#LUSV:LUILight use            -0.6786     0.6727  -1.009 0.313109    
+#LUPrimary:LUILight use       -0.8329     0.6298  -1.322 0.186006    
+#LUCropland:LUIMinimal use    -1.7387     0.7140  -2.435 0.014878 *  
+#LUPlantation:LUIMinimal use  -0.5814     0.7723  -0.753 0.451523    
+#LUSV:LUIMinimal use          -0.7268     0.6811  -1.067 0.285900    
+#LUPrimary:LUIMinimal use     -1.8583     0.6607  -2.813 0.004914 ** 
+
+#2) summary result for m_size = glmer(Alien.presence ~ LU*LUI +size+ (1|SS/SSB) 
+#Fixed effects:
+#                            Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)                 -3.69338    1.05729  -3.493 0.000477 ***
+#LUUrban                     -0.45141    0.54893  -0.822 0.410886    
+#LUCropland                   1.62101    0.60997   2.658 0.007872 ** 
+#LUPlantation                -0.19746    0.67460  -0.293 0.769752    
+#LUSV                         0.16170    0.66092   0.245 0.806727    
+#LUPrimary                   -0.35468    0.63527  -0.558 0.576625    
+#LUILight use                 0.16878    0.55731   0.303 0.762009    
+#LUIMinimal use               0.87353    0.60053   1.455 0.145781    
+#size                         0.03268    0.14496   0.225 0.821651    
+#LUUrban:LUILight use         1.05539    0.69023   1.529 0.126254    
+#LUCropland:LUILight use     -3.00257    0.72801  -4.124 3.72e-05 ***
+#LUPlantation:LUILight use    0.63468    0.73341   0.865 0.386827    
+#LUSV:LUILight use           -1.24968    0.71629  -1.745 0.081043 .  
+#LUPrimary:LUILight use      -1.26740    0.66174  -1.915 0.055460 .  
+#LUCropland:LUIMinimal use   -2.20976    0.76575  -2.886 0.003905 ** 
+#LUPlantation:LUIMinimal use -0.47459    0.83016  -0.572 0.567532    
+#LUSV:LUIMinimal use         -1.34510    0.73355  -1.834 0.066700 .  
+#LUPrimary:LUIMinimal use    -2.35002    0.70135  -3.351 0.000806 ***
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+
+```
+
+#2) non-native number
+```{r}
+db_alien <- subset(db.size, alien_freq > 0)
+levels(db_alien$LU)
+db_alien$LU<-
+  factor(db_alien$LU,c("Primary","SV","Plantation","Pasture","Cropland","Urban"))
+# reorder LU-intensity
+db_alien$LUI <- factor(db_alien$LUI , levels = c("Minimal use" , "Light use" , "Intense use" , "Cannot decide"))
+```
+#2_1 test the models
+```{r}
+#1)the model in the paper, with SS/SSB in the random factor
+m_paper <- glmer(alien_freq ~ LU*LUI + (1|SS/SSB) , data = db_alien , family = poisson , 
+           control = glmerControl(optimizer = "bobyqa" , 
+                                  optCtrl = list(maxfun = 1e5)) , 
+           nAGQ = 1 , subset = as.vector(db_alien$LUI != "Cannot decide"))
+#2)adding model, with SS/SSB/Biome in the random factor
+m_adding_size <- glmer(alien_freq ~ LU*LUI +size+ (1|SS/SSB) , data = db_alien , family = poisson , 
+           control = glmerControl(optimizer = "bobyqa" , 
+                                  optCtrl = list(maxfun = 1e5)) , 
+           nAGQ = 1 , subset = as.vector(db_alien$LUI != "Cannot decide"))
+
+summary(m_paper);summary(m_adding_size) 
+
+#Conclusion: No significance for the size (p=0.659588) in the model, see below.
+```
+##model result
+```{r}
+#1) summary result for m_paper= glmer(alien_freq ~ LU*LUI + (1|SS/SSB)
+#Fixed effects:
+#                            Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)                 -0.06165    0.08633  -0.714 0.475149    
+#LUSV                         0.65267    0.07745   8.427  < 2e-16 ***
+#LUPlantation                 0.76349    0.17692   4.315 1.59e-05 ***
+#LUPasture                    0.46811    0.12574   3.723 0.000197 ***
+#LUCropland                   0.65042    0.09892   6.575 4.86e-11 ***
+#LUUrban                      0.69688    0.13850   5.032 4.86e-07 ***
+#LUILight use                 0.36000    0.08205   4.387 1.15e-05 ***
+#LUIIntense use               0.59567    0.15097   3.946 7.96e-05 ***
+#LUSV:LUILight use           -0.48426    0.12360  -3.918 8.93e-05 ***
+#LUPlantation:LUILight use   -0.56676    0.20863  -2.717 0.006596 ** 
+#LUPasture:LUILight use      -0.24346    0.13715  -1.775 0.075881 .  
+#LUCropland:LUILight use     -0.81960    0.11914  -6.880 6.00e-12 ***
+#LUUrban:LUILight use        -0.37003    0.17861  -2.072 0.038292 *  
+#LUSV:LUIIntense use         -0.75437    0.19962  -3.779 0.000157 ***
+#LUPlantation:LUIIntense use -1.18997    0.26640  -4.467 7.94e-06 ***
+#LUPasture:LUIIntense use    -0.50842    0.24472  -2.077 0.037756 *  
+#LUCropland:LUIIntense use   -0.94804    0.18202  -5.209 1.90e-07 ***
+#LUUrban:LUIIntense use      -0.60537    0.24613  -2.460 0.013909 *  
+#---
+
+#2) summar result for m_adding_size =glmer(alien_freq ~ LU*LUI +size+ (1|SS/SSB)
+#Fixed effects:
+#                            Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)                 -0.02890    0.18574  -0.156 0.876342    
+#LUSV                         0.62934    0.07823   8.045 8.62e-16 ***
+#LUPlantation                 0.87751    0.17815   4.926 8.41e-07 ***
+#LUPasture                    0.47559    0.12870   3.695 0.000220 ***
+#LUCropland                   0.67224    0.14632   4.594 4.34e-06 ***
+#LUUrban                      0.71795    0.13668   5.253 1.50e-07 ***
+#LUILight use                 0.38089    0.08254   4.615 3.94e-06 ***
+#LUIIntense use               0.60016    0.14884   4.032 5.52e-05 ***
+#size                        -0.01612    0.03659  -0.440 0.659588    
+#LUSV:LUILight use           -0.45907    0.12435  -3.692 0.000223 ***
+#LUPlantation:LUILight use   -0.62945    0.21081  -2.986 0.002828 ** 
+#LUPasture:LUILight use      -0.25610    0.14063  -1.821 0.068602 .  
+#LUCropland:LUILight use     -0.91442    0.17360  -5.267 1.38e-07 ***
+#LUUrban:LUILight use        -0.39710    0.17745  -2.238 0.025232 *  
+#LUSV:LUIIntense use         -0.73493    0.19862  -3.700 0.000216 ***
+#LUPlantation:LUIIntense use -1.27290    0.26874  -4.737 2.17e-06 ***
+#LUPasture:LUIIntense use    -0.44913    0.28389  -1.582 0.113635    
+#LUCropland:LUIIntense use   -0.99462    0.21139  -4.705 2.54e-06 ***
+#LUUrban:LUIIntense use      -0.59748    0.24365  -2.452 0.014197 *  
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+```
+#3) Non-native proportion
+```{r}
+# make proportion of aliens
+db_alien$alien_prop <- db_alien$alien_freq / db_alien$pred_freq
+summary(db_alien$alien_prop)
+# alien proportion contains 1, therefore apply lemon squeezer following Smithson M, Verkuilen J (2006). "A Better Lemon Squeezer? Maximum-Likelihood Regression with Beta-Distributed Dependent Variables." Psychological Methods, 11 (1), 54-71
+db_alien$alien_prop_squeezed <- (db_alien$alien_prop * (nrow(db_alien)-1) + 0.5) / nrow(db_alien)
+
+
+```
+#3_1 test the models
+```{r}
+#1)the model in the paper, with SS/SSB in the random factor
+library(glmmTMB)
+m_paper <- glmmTMB(alien_prop_squeezed ~ LU*LUI + (1|SS/SSB) , data = db_alien[db_alien$LUI != "Cannot decide" , ] , 
+                   family = beta_family)
+#2)adding model, with SS/SSB/Biome in the random factor
+m_adding_size <- glmmTMB(alien_prop_squeezed ~ LU*LUI +size+ (1|SS/SSB) , data = db_alien[db_alien$LUI != "Cannot decide" , ] , 
+                    family = beta_family)
+summary(m_paper);summary(m_adding_size) 
+
+#Conclusion: No significance for the size (p=0.421732) in the model, see below.
+```
+##model result
+```{r}
+#1) summary result for m_paper= glmmTMB(alien_prop_squeezed ~ LU*LUI + (1|SS/SSB)
+#Conditional model:
+#                            Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)                 -1.28339    0.17722  -7.242 4.43e-13 ***
+#LUSV                         0.19001    0.09856   1.928 0.053876 .  
+#LUPlantation                 0.28103    0.22568   1.245 0.213030    
+#LUPasture                    0.19162    0.13958   1.373 0.169797    
+#LUCropland                   0.82033    0.15323   5.354 8.62e-08 ***
+#LUUrban                      0.58070    0.15981   3.634 0.000279 ***
+#LUILight use                 0.17019    0.09526   1.787 0.074000 .  
+#LUIIntense use               0.56171    0.20036   2.804 0.005055 ** 
+#LUSV:LUILight use           -0.16346    0.14505  -1.127 0.259787    
+#LUPlantation:LUILight use    0.03352    0.25031   0.134 0.893456    
+#LUPasture:LUILight use      -0.03894    0.15005  -0.260 0.795218    
+#LUCropland:LUILight use     -0.68359    0.18608  -3.674 0.000239 ***
+#LUUrban:LUILight use        -0.12085    0.19361  -0.624 0.532509    
+#LUSV:LUIIntense use         -0.20110    0.23029  -0.873 0.382533    
+#LUPlantation:LUIIntense use -0.04982    0.32667  -0.153 0.878792    
+#LUPasture:LUIIntense use    -0.43216    0.27919  -1.548 0.121645    
+#LUCropland:LUIIntense use   -1.03100    0.25802  -3.996 6.45e-05 ***
+#LUUrban:LUIIntense use      -0.19149    0.32285  -0.593 0.553092    
+
+
+#2) summar result for aading _size= glmmTMB(alien_prop_squeezed ~ LU*LUI +size+ (1|SS/SSB)
+#Conditional model:
+#                            Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)                 -0.92458    0.41124  -2.248 0.024559 *  
+#LUSV                         0.18511    0.09996   1.852 0.064043 .  
+#LUPlantation                 0.33568    0.23334   1.439 0.150262    
+#LUPasture                    0.18366    0.14492   1.267 0.205052    
+#LUCropland                   0.65107    0.18798   3.463 0.000533 ***
+#LUUrban                      0.58121    0.16086   3.613 0.000303 ***
+#LUILight use                 0.17890    0.09688   1.847 0.064792 .  
+#LUIIntense use               0.56639    0.20105   2.817 0.004846 ** 
+#size                        -0.06355    0.07910  -0.803 0.421732    
+#LUSV:LUILight use           -0.11283    0.14816  -0.762 0.446326    
+#LUPlantation:LUILight use    0.03406    0.25915   0.131 0.895418    
+#LUPasture:LUILight use      -0.03049    0.15572  -0.196 0.844749    
+#LUCropland:LUILight use     -0.54505    0.22430  -2.430 0.015097 *  
+#LUUrban:LUILight use        -0.13306    0.19557  -0.680 0.496263    
+#LUSV:LUIIntense use         -0.19323    0.23139  -0.835 0.403688    
+#LUPlantation:LUIIntense use -0.07714    0.33342  -0.231 0.817023    
+#LUPasture:LUIIntense use    -0.35689    0.32384  -1.102 0.270442    
+#LUCropland:LUIIntense use   -0.86180    0.28311  -3.044 0.002334 ** 
+#LUUrban:LUIIntense use      -0.20243    0.32497  -0.623 0.533331    
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+
+
+#4)test islands and contiennts
+
+```{r}
+names(db)
+dplyr::count(db,taxa,island_continent)
+
+dplyr::count(db_alien,taxa,island_continent)
+
+```
+##4_1) non-native incidnce
+```{r}
+#we condidered to add the island and continents into the random factor and then test the difference wiht the model we used inthe paper. we can compare 1) AIC values, anova and summary result.
+
+db.full.test <- subset(db.size,!(LU %in% "Urban" & LUI %in%"Intense use"))
+#1change the refernce for LU
+levels(db.full.test$LU)
+db.full.test$LU = factor(db.full.test$LU, levels=c("Primary","SV","Plantation","Cropland","Pasture","Urban"))
+db.full.test$LU = factor(db.full.test$LU, levels=c("Pasture","Urban","Cropland", "Plantation","SV", "Primary"))
+levels(db.full.test$LUI)
+db.full.test$LUI = factor(db.full.test$LUI, levels=c("Cannot decide","Minimal use","Light use","Intense use"))
+db.full.test$LUI = factor(db.full.test$LUI, levels=c("Intense use", "Light use","Minimal use","Cannot decide"))
+
+
+
+#1 the model in the paper, with SS/SSB in the random factor
+m_paper <- glmer(Alien.presence ~ LU*LUI + (1|SS/SSB) , 
+          data = db.full.test , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , 
+                                 optCtrl = list(maxfun = 1e5)),
+           nAGQ = 1 , subset = as.vector(db.full.test$LUI != "Cannot decide"))
+#2 adding island_continent in model, as the random factor
+m_adding <- glmer(Alien.presence ~ LU*LUI + (1|SS/SSB/island_continent) , 
+          data = db.full.test , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , 
+                                 optCtrl = list(maxfun = 1e5)),
+           nAGQ = 1 , subset = as.vector(db.full.test$LUI != "Cannot decide"))
+
+AIC(m_paper);AIC(m_adding)# deltAIC < 2
+anova(m_paper,m_adding)# p=0.968, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below
+```
+###model result
+```{r}
+#1) summary result of m_paper <- glmer(Alien.presence ~ LU*LUI + (1|SS/SSB) 
+#Fixed effects:
+#                            Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)                  -3.2887     0.6578  -5.000 5.74e-07 ***
+#LUUrban                      -0.4275     0.5452  -0.784 0.432921    
+#LUCropland                    1.3355     0.5835   2.289 0.022107 *  
+#LUPlantation                 -0.2572     0.6309  -0.408 0.683527    
+#LUSV                         -0.4236     0.6200  -0.683 0.494506    
+#LUPrimary                    -0.7766     0.6062  -1.281 0.200124    
+#LUILight use                 -0.1913     0.5240  -0.365 0.715050    
+#LUIMinimal use                0.5140     0.5582   0.921 0.357201    
+#LUUrban:LUILight use          1.0324     0.6864   1.504 0.132582    
+#LUCropland:LUILight use      -2.3252     0.6934  -3.353 0.000799 ***
+#LUPlantation:LUILight use     0.7785     0.6863   1.134 0.256665    
+#LUSV:LUILight use            -0.6786     0.6727  -1.009 0.313109    
+#LUPrimary:LUILight use       -0.8329     0.6298  -1.322 0.186006    
+#LUCropland:LUIMinimal use    -1.7387     0.7140  -2.435 0.014878 *  
+#LUPlantation:LUIMinimal use  -0.5814     0.7723  -0.753 0.451523    
+#LUSV:LUIMinimal use          -0.7268     0.6811  -1.067 0.285900    
+#LUPrimary:LUIMinimal use     -1.8583     0.6607  -2.813 0.004914 ** 
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+#2) summary result of model_adding <- glmer(Alien.presence ~ LU*LUI + (1|SS/SSB/island_continent)
+
+#Fixed effects:
+#                            Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)                  -3.2890     0.6559  -5.015 5.31e-07 ***
+#LUUrban                      -0.4275     0.5452  -0.784  0.43296    
+#LUCropland                    1.3354     0.5810   2.299  0.02153 *  
+#LUPlantation                 -0.2572     0.6290  -0.409  0.68257    
+#LUSV                         -0.4236     0.6179  -0.686  0.49300    
+#LUPrimary                    -0.7767     0.6046  -1.285  0.19892    
+#LUILight use                 -0.1913     0.5217  -0.367  0.71378    
+#LUIMinimal use                0.5139     0.5559   0.924  0.35524    
+#LUUrban:LUILight use          1.0324     0.6864   1.504  0.13256    
+#LUCropland:LUILight use      -2.3252     0.6906  -3.367  0.00076 ***
+#LUPlantation:LUILight use     0.7785     0.6843   1.138  0.25526    
+#LUSV:LUILight use            -0.6786     0.6703  -1.012  0.31139    
+#LUPrimary:LUILight use       -0.8329     0.6280  -1.326  0.18477    
+#LUCropland:LUIMinimal use    -1.7387     0.7113  -2.444  0.01451 *  
+#LUPlantation:LUIMinimal use  -0.5814     0.7698  -0.755  0.45009    
+#LUSV:LUIMinimal use          -0.7268     0.6787  -1.071  0.28421    
+#LUPrimary:LUIMinimal use     -1.8582     0.6589  -2.820  0.00480 ** 
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+###For birds
+```{r}
+#1 the model in the paper, with SS/SSB in the random factor
+m_paper <- glmer(Alien.presence ~ LU + (1|SS/SSB) , 
+          data = db.full.test[db.full.test$taxa=="Birds",] , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , 
+                                 optCtrl = list(maxfun = 1e5)),nAGQ = 1 )
+#2 adding island_continent in model, as the random factor
+m_adding <- glmer(Alien.presence ~ LU+ (1|SS/SSB/island_continent) , 
+          data = db.full.test[db.full.test$taxa=="Birds",], family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , 
+                                 optCtrl = list(maxfun = 1e5)),nAGQ = 1 )
+
+AIC(m_paper);AIC(m_adding)# deltAIC = 2
+anova(m_paper,m_adding)# p=1, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below
+```
+
+```{r}
+#1) summary model result of m_paper= glmer(Alien.presence ~ LU + (1|SS/SSB)
+#Fixed effects:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)   -9.6119     1.3277  -7.240 4.49e-13 ***
+#LUUrban        1.5372     0.6341   2.424  0.01533 *  
+#LUCropland     1.4225     0.4470   3.182  0.00146 ** 
+#LUPlantation   0.4405     0.4813   0.915  0.36007    
+#LUSV          -0.2407     0.5113  -0.471  0.63782    
+#LUPrimary     -1.0481     0.4669  -2.245  0.02478 *  
+#2) summary model result of m_adding <- glmer(Alien.presence ~ LU+ (1|SS/SSB/island_continent)
+#Fixed effects:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)   -9.6119     1.3277  -7.240 4.49e-13 ***
+#LUUrban        1.5372     0.6341   2.424  0.01533 *  
+#LUCropland     1.4225     0.4470   3.182  0.00146 ** 
+#LUPlantation   0.4405     0.4813   0.915  0.36007    
+#LUSV          -0.2407     0.5113  -0.471  0.63782    
+#LUPrimary     -1.0481     0.4669  -2.245  0.02478 *  
+
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+
+
+

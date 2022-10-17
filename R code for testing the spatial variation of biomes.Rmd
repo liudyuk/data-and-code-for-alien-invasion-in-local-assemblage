@@ -1,0 +1,1617 @@
+---
+title: "test spatial variability"
+output: html_document
+---
+```{r}
+#explaination 
+#1) adding the biomes in the random factor
+
+
+#2) runding the models for temperate and tropic separately
+
+```
+##import the packages
+```{r}
+#install the packages and library
+#install.packages("lme4")
+#install.packages("emmeans")
+#install.packages("tidyverse")
+#install.packages("data.table")
+#install.packages("lme4")
+#install.packages("ggplot2")
+#install.packages("DHARMa")
+library(lme4)
+library(data.table)
+library(emmeans)
+library(multcomp)
+library(lme4)
+library(ggplot2)
+library(tidyverse)
+library(DHARMa)
+```
+#import the data
+```{r}
+db<-read.csv(file = '/.../dt.22.03.2022.csv',sep=";",stringsAsFactors=T)
+#the alien ratio is wrong
+db$alien_all<-with(db,alien_freq/pred_freq)
+levels(as.factor(db$LU))
+db$LU<-
+  factor(db$LU,c("Primary","SV","Plantation","Pasture","Cropland","Urban"))
+levels(as.factor(db$LUI))
+db$LUI<-
+  factor(db$LUI,c("Cannot decide","Minimal use","Light use","Intense use"))
+#run on the right
+db%>%summarise(tax_count=plyr::count(taxa))
+# Alien presence/absence for logistical model. 
+db$Alien.presence <- as.logical(db$alien_freq)
+#check the biomes of local assemblages
+db$Biome<-as.factor(db$Biome)
+levels(db$Biome)
+#there are 184 assemblages are belonging to boreal and tundra, merge into temperate
+levels(db$Biome) <- c("Temperate", "Temperate","Tropic","Tropic",
+                      "Tropic","Temperate","Temperate","Temperate",
+                      "Temperate","Tropic","Tropic","Tropic",
+                      "Tropic","Temperate")
+#add the site is island or continents
+levels(db$Country)
+#add all of the continent
+db$island_continent<-with(db,"continent")
+#then revise them by checking
+db$island_continent<-as.character(db$island_continent)
+db$island_continent[db$Country == "Comoros"] <- "Island"
+db$island_continent[db$Country == "Comoros"] <- "Island"
+db$island_continent[db$Country == "Indonesia"] <- "Island"
+db$island_continent[db$Country == "Ireland"] <- "Island"
+db$island_continent[db$Country == "Japan"] <- "Island"
+db$island_continent[db$Country == "Madagascar"] <- "Island"
+db$island_continent[db$Country == "New Zealand"] <- "Island"
+
+db$island_continent[db$Country == "Papua New Guinea"] <- "Island"
+db$island_continent[db$Country == "Philippines"] <- "Island"
+db$island_continent[db$Country == "Puerto Rico"] <- "Island"
+
+db$island_continent[db$Country == "Sao Tome and Principe"] <- "Island"
+db$island_continent[db$Country == "Solomon Islands"] <- "Island"
+db$island_continent[db$Country == "Sri Lanka"] <- "Island"
+db$island_continent[db$Country == "United Kingdom"] <- "Island"
+
+#check the coutries which has data in the islands 
+db$island_continent[db$Country == "United States"  & db$Longitude<(-150)] <- "Island"
+db$island_continent[db$Country == "Malaysia"  & db$Longitude>(110)] <- "Island"
+
+```
+
+#1) adding biomes in random
+#1_1)alien incidence
+###1_1_1 All taxa full model
+```{r}
+db.full.test <- subset(db,!(LU %in% "Urban" & LUI %in%"Intense use"))
+#1change the refernce for LU
+levels(db.full.test$LU)
+db.full.test$LU = factor(db.full.test$LU, levels=c("Primary","SV","Plantation","Cropland","Pasture","Urban"))
+db.full.test$LU = factor(db.full.test$LU, levels=c("Pasture","Urban","Cropland", "Plantation","SV", "Primary"))
+levels(db.full.test$LUI)
+db.full.test$LUI = factor(db.full.test$LUI, levels=c("Cannot decide","Minimal use","Light use","Intense use"))
+db.full.test$LUI = factor(db.full.test$LUI, levels=c("Intense use", "Light use","Minimal use","Cannot decide"))
+
+#1 the model in the paper, with SS/SSB in the random factor
+m_paper <- glmer(Alien.presence ~ LU*LUI + (1|SS/SSB) , 
+          data = db.full.test , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , 
+                                 optCtrl = list(maxfun = 1e5)),
+           nAGQ = 1 , subset = as.vector(db.full.test$LUI != "Cannot decide"))
+#2 adding model, with SS/SSB/Biome in the random factor
+m_adding <- glmer(Alien.presence ~ LU*LUI + (1|SS/SSB/Biome) , 
+          data = db.full.test , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , 
+                                 optCtrl = list(maxfun = 1e5)),
+           nAGQ = 1 , subset = as.vector(db.full.test$LUI != "Cannot decide"))
+
+AIC(m_paper);AIC(m_adding)# deltAIC < 2
+anova(m_paper,m_adding)# p=0.968, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below
+```
+#### full model summary result
+```{r}
+1) summary(m_paper)
+#     AIC      BIC   logLik deviance df.resid 
+#  4961.6   5098.3  -2461.8   4923.6     9830 
+#Scaled residuals: 
+#     Min       1Q   Median       3Q      Max 
+#-10.0835  -0.1861  -0.0428  -0.0188  16.4574 
+#Random effects:
+# Groups Name        Variance Std.Dev.
+# SSB:SS (Intercept)  1.012   1.006   
+# SS     (Intercept) 18.809   4.337   
+#Number of obs: 9849, groups:  SSB:SS, 726; SS, 234
+#
+#Fixed effects:
+#                            Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)                  -3.2886     0.6512  -5.050 4.42e-07 ***
+#LUUrban                      -0.4275     0.5450  -0.784 0.432764    
+#LUCropland                    1.3354     0.5780   2.310 0.020864 *  
+#LUPlantation                 -0.2573     0.6252  -0.411 0.680707    
+#LUSV                         -0.4237     0.6128  -0.691 0.489293    
+#LUPrimary                    -0.7767     0.6000  -1.295 0.195469    
+#LUILight use                 -0.1914     0.5175  -0.370 0.711490    
+#LUIMinimal use                0.5139     0.5517   0.931 0.351630    
+#LUUrban:LUILight use          1.0323     0.6861   1.505 0.132401    
+#LUCropland:LUILight use      -2.3251     0.6881  -3.379 0.000727 ***
+#LUPlantation:LUILight use     0.7785     0.6806   1.144 0.252692    
+#LUSV:LUILight use            -0.6785     0.6653  -1.020 0.307807    
+#LUPrimary:LUILight use       -0.8328     0.6236  -1.336 0.181703    
+#LUCropland:LUIMinimal use    -1.7386     0.7086  -2.453 0.014149 *  
+#LUPlantation:LUIMinimal use  -0.5814     0.7666  -0.758 0.448194    
+#LUSV:LUIMinimal use          -0.7267     0.6734  -1.079 0.280517    
+#LUPrimary:LUIMinimal use     -1.8582     0.6542  -2.840 0.004505 ** 
+2)summary(m_adding) result
+#     AIC      BIC   logLik deviance df.resid 
+#  4963.6   5107.5  -2461.8   4923.6     9829 
+#
+#Scaled residuals: 
+#     Min       1Q   Median       3Q      Max 
+#-10.0837  -0.1861  -0.0427  -0.0188  16.4576 
+#
+#Random effects:
+# Groups         Name        Variance  Std.Dev. 
+# Biome:(SSB:SS) (Intercept) 1.605e-08 0.0001267
+# SSB:SS         (Intercept) 1.012e+00 1.0057611
+# SS             (Intercept) 1.881e+01 4.3372742
+#Number of obs: 9849, groups:  Biome:(SSB:SS), 729; SSB:SS, 726; SS, 234
+#
+#Fixed effects:
+#                            Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)                  -3.2890     0.6580  -4.998 5.79e-07 ***
+#LUUrban                      -0.4275     0.5450  -0.784 0.432813    
+#LUCropland                    1.3354     0.5827   2.292 0.021906 *  
+#LUPlantation                 -0.2572     0.6311  -0.408 0.683603    
+#LUSV                         -0.4236     0.6198  -0.684 0.494281    
+#LUPrimary                    -0.7767     0.6076  -1.278 0.201152    
+#LUILight use                 -0.1914     0.5240  -0.365 0.714972    
+#LUIMinimal use                0.5139     0.5580   0.921 0.357093    
+#LUUrban:LUILight use          1.0323     0.6861   1.505 0.132390    
+#LUCropland:LUILight use      -2.3252     0.6923  -3.359 0.000783 ***
+#LUPlantation:LUILight use     0.7785     0.6866   1.134 0.256880    
+#LUSV:LUILight use            -0.6785     0.6721  -1.010 0.312717    
+#LUPrimary:LUILight use       -0.8328     0.6309  -1.320 0.186804    
+#LUCropland:LUIMinimal use    -1.7387     0.7127  -2.439 0.014711 *  
+#LUPlantation:LUIMinimal use  -0.5814     0.7717  -0.753 0.451214    
+#LUSV:LUIMinimal use          -0.7268     0.6804  -1.068 0.285422    
+#LUPrimary:LUIMinimal use     -1.8582     0.6618  -2.808 0.004987 ** 
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+```
+###1_1_2 All taxa subset model
+```{r}
+m_paper <- glmer(Alien.presence ~ LU + (1|SS/SSB) , 
+          data = db.full.test , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , 
+                                 optCtrl = list(maxfun = 1e5)),nAGQ = 1)
+m_adding <- glmer(Alien.presence ~ LU + (1|SS/SSB/Biome) , 
+          data = db.full.test , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , 
+                                 optCtrl = list(maxfun = 1e5)),nAGQ = 1)
+AIC(m_paper);AIC(m_adding)# deltAIC < 2
+anova(m_paper,m_adding)# p=0.972, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below
+
+```
+#### subset model summary result
+```{r}
+1) summary(m_paper) result
+#     AIC      BIC   logLik deviance df.resid 
+#  5498.5   5557.4  -2741.2   5482.5    11685 
+#Scaled residuals: 
+#    Min      1Q  Median      3Q     Max 
+#-5.6921 -0.1843 -0.0417 -0.0202 12.2874 
+#Random effects:
+# Groups Name        Variance Std.Dev.
+# SSB:SS (Intercept)  1.002   1.001   
+# SS     (Intercept) 18.508   4.302   
+#Number of obs: 11693, groups:  SSB:SS, 958; SS, 245
+#Fixed effects:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)   -3.5292     0.4379  -8.059  7.7e-16 ***
+#LUUrban        0.5505     0.3806   1.446   0.1481    
+#LUCropland     0.5249     0.2359   2.225   0.0261 *  
+#LUPlantation   0.2171     0.2343   0.927   0.3541    
+#LUSV          -0.6394     0.2059  -3.106   0.0019 ** 
+#LUPrimary     -1.5806     0.1919  -8.235  < 2e-16 ***
+2)summary(m_adding) result
+#     AIC      BIC   logLik deviance df.resid 
+#  5500.5   5566.8  -2741.2   5482.5    11684 
+#Scaled residuals: 
+#    Min      1Q  Median      3Q     Max 
+#-5.6921 -0.1843 -0.0417 -0.0202 12.2875 
+#Random effects:
+# Groups         Name        Variance Std.Dev.
+# Biome:(SSB:SS) (Intercept)  0.000   0.000   
+# SSB:SS         (Intercept)  1.002   1.001   
+# SS             (Intercept) 18.510   4.302   
+#Number of obs: 11693, groups:  Biome:(SSB:SS), 961; SSB:SS, 958; SS, 245
+#Fixed effects:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)   -3.5294     0.4377  -8.064 7.37e-16 ***
+#LUUrban        0.5505     0.3806   1.446   0.1481    
+#LUCropland     0.5249     0.2359   2.225   0.0261 *  
+#LUPlantation   0.2171     0.2343   0.926   0.3542    
+#LUSV          -0.6394     0.2059  -3.105   0.0019 ** 
+#LUPrimary     -1.5806     0.1920  -8.234  < 2e-16 ***
+```
+###1_1_3 Each taxa subset model
+####Ants
+```{r}
+db.t_ants<-db.full.test[db.full.test$taxa=="Ants",]
+m_paper <- glmer(Alien.presence ~ LU + (1|SS/SSB) , 
+          data = db.t_ants , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , optCtrl = list(maxfun = 1e5)),nAGQ = 1)
+m_adding <- glmer(Alien.presence ~ LU + (1|SS/SSB/Biome) , 
+          data = db.t_ants , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , optCtrl = list(maxfun = 1e5)),nAGQ = 1)
+AIC(m_paper);AIC(m_adding)# deltAIC = 2
+anova(m_paper,m_adding)# p=0.9998, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below.
+```
+####Ants summary result
+```{r}
+1) summary(m_paper) result
+#     AIC      BIC   logLik deviance df.resid 
+#   337.4    369.5   -160.7    321.4      399 
+#Scaled residuals: 
+#    Min      1Q  Median      3Q     Max 
+#-2.5485 -0.4195 -0.1797  0.2005  9.2446 
+#Random effects:
+# Groups Name        Variance  Std.Dev. 
+# SSB:SS (Intercept) 2.056e-15 4.535e-08
+# SS     (Intercept) 4.232e+00 2.057e+00
+#Number of obs: 407, groups:  SSB:SS, 68; SS, 29
+#Fixed effects:
+#             Estimate Std. Error z value Pr(>|z|)   
+#(Intercept)   -1.5073     0.6839  -2.204  0.02753 * 
+#LUUrban       -0.1453     0.7081  -0.205  0.83737   
+#LUCropland     0.6754     0.8740   0.773  0.43971   
+#LUPlantation   1.4509     0.8189   1.772  0.07644 . 
+#LUSV          -1.0284     0.5673  -1.813  0.06985 . 
+#LUPrimary     -2.0818     0.7176  -2.901  0.00372 **
+2) summary(m_adding) result
+#     AIC      BIC   logLik deviance df.resid 
+#   339.4    375.5   -160.7    321.4      398 
+#Scaled residuals: 
+#    Min      1Q  Median      3Q     Max 
+#-2.5485 -0.4195 -0.1797  0.2005  9.2446 
+#Random effects:
+# Groups         Name        Variance Std.Dev.
+# Biome:(SSB:SS) (Intercept) 0.000    0.000   
+# SSB:SS         (Intercept) 0.000    0.000   
+# SS             (Intercept) 4.232    2.057   
+#Number of obs: 407, groups:  Biome:(SSB:SS), 68; SSB:SS, 68; SS, 29
+#
+#Fixed effects:
+#             Estimate Std. Error z value Pr(>|z|)   
+#(Intercept)   -1.5073     0.6839  -2.204  0.02753 * 
+#LUUrban       -0.1453     0.7081  -0.205  0.83737   
+#LUCropland     0.6754     0.8740   0.773  0.43971   
+#LUPlantation   1.4509     0.8189   1.772  0.07644 . 
+#LUSV          -1.0284     0.5673  -1.813  0.06985 . 
+#LUPrimary     -2.0818     0.7177  -2.901  0.00372 **
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+####birds
+```{r}
+db.t_birds<-db.full.test[db.full.test$taxa=="Birds",]
+m_paper <- glmer(Alien.presence ~ LU + (1|SS/SSB) , 
+          data = db.t_birds , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , optCtrl = list(maxfun = 1e5)),nAGQ = 1)
+m_adding <- glmer(Alien.presence ~ LU + (1|SS/SSB/Biome) , 
+          data = db.t_birds , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , optCtrl = list(maxfun = 1e5)),nAGQ = 1)
+AIC(m_paper);AIC(m_adding)# deltAIC = 2
+anova(m_paper,m_adding)# p=1, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below.
+```
+####Birds summary result
+```{r}
+1) summary(m_paper) result
+#     AIC      BIC   logLik deviance df.resid 
+#  1443.0   1495.0   -713.5   1427.0     4897 
+#Scaled residuals: 
+#    Min      1Q  Median      3Q     Max 
+#-3.4322 -0.0160 -0.0064 -0.0046 10.7594 
+#Random effects:
+# Groups Name        Variance Std.Dev.
+# SSB:SS (Intercept)  1.655   1.286   
+# SS     (Intercept) 77.842   8.823   
+#Number of obs: 4905, groups:  SSB:SS, 453; SS, 98
+#Fixed effects:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)   -9.6125     1.3290  -7.233 4.74e-13 ***
+#LUUrban        1.5372     0.6343   2.424  0.01536 *  
+#LUCropland     1.4225     0.4474   3.180  0.00147 ** 
+#LUPlantation   0.4405     0.4819   0.914  0.36062    
+#LUSV          -0.2407     0.5119  -0.470  0.63819    
+#LUPrimary     -1.0481     0.4674  -2.243  0.02492 *  
+2) summary(m_adding) result
+#     AIC      BIC   logLik deviance df.resid 
+#  1445.0   1503.5   -713.5   1427.0     4896 
+#
+#Scaled residuals: 
+#    Min      1Q  Median      3Q     Max 
+#-3.4322 -0.0160 -0.0064 -0.0046 10.7594 
+#
+#Random effects:
+# Groups         Name        Variance  Std.Dev.
+# Biome:(SSB:SS) (Intercept)  0.003829 0.06188 
+# SSB:SS         (Intercept)  1.650794 1.28483 
+# SS             (Intercept) 77.824634 8.82183 
+#Number of obs: 4905, groups:  Biome:(SSB:SS), 454; SSB:SS, 453; SS, 98
+#
+#Fixed effects:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)   -9.6119     1.3253  -7.252  4.1e-13 ***
+#LUUrban        1.5372     0.6343   2.423  0.01538 *  
+#LUCropland     1.4225     0.4474   3.179  0.00148 ** 
+#LUPlantation   0.4405     0.4819   0.914  0.36067    
+#LUSV          -0.2407     0.5120  -0.470  0.63824    
+#LUPrimary     -1.0481     0.4674  -2.243  0.02493 *  
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+```
+
+####mammals
+```{r}
+db.t_mam<-db.full.test[db.full.test$taxa=="Mammals",]
+db.t_mam<-subset(db.t_mam,!(LU %in% "Urban" & taxa %in%"Mammals"))
+db.t_mam<-subset(db.t_mam,!(LU %in% "Cropland" & taxa %in%"Mammals"))
+m_paper <- glmer(Alien.presence ~ LU + (1|SS/SSB) , 
+          data = db.t_mam , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , optCtrl = list(maxfun = 1e5)),nAGQ = 1)
+m_adding <- glmer(Alien.presence ~ LU + (1|SS/SSB/Biome) , 
+          data = db.t_mam , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , optCtrl = list(maxfun = 1e5)),nAGQ = 1)
+AIC(m_paper);AIC(m_adding)# deltAIC < 2
+anova(m_paper,m_adding)# p=0.991, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below.
+```
+####Mammals summary result
+```{r}
+1) summary(m_paper) result
+#     AIC      BIC   logLik deviance df.resid 
+#   623.7    653.8   -305.9    611.7     1108
+#Scaled residuals: 
+#    Min      1Q  Median      3Q     Max 
+#-2.5244 -0.0651 -0.0269  0.0846  8.4993 
+#Random effects:
+# Groups Name        Variance Std.Dev.
+# SSB:SS (Intercept)  0.6985  0.8358  
+# SS     (Intercept) 31.8046  5.6396  
+#Number of obs: 1114, groups:  SSB:SS, 96; SS, 42
+#Fixed effects:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)   -7.1554     2.0285  -3.527  0.00042 ***
+#LUPlantation   2.0150     0.8987   2.242  0.02495 *  
+#LUSV           2.7010     0.8725   3.096  0.00196 ** 
+#LUPrimary      0.7912     0.7961   0.994  0.32027    
+2) summary(m_adding) result
+#     AIC      BIC   logLik deviance df.resid 
+#   625.7    660.8   -305.9    611.7     1107 
+#
+#Scaled residuals: 
+#    Min      1Q  Median      3Q     Max 
+#-2.5244 -0.0651 -0.0269  0.0845  8.4993 
+#
+#Random effects:
+# Groups         Name        Variance  Std.Dev. 
+# Biome:(SSB:SS) (Intercept) 1.362e-10 1.167e-05
+# SSB:SS         (Intercept) 6.985e-01 8.358e-01
+# SS             (Intercept) 3.181e+01 5.640e+00
+#Number of obs: 1114, groups:  Biome:(SSB:SS), 97; SSB:SS, 96; SS, 42
+#
+#Fixed effects:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)   -7.1559     2.0324  -3.521  0.00043 ***
+#LUPlantation   2.0150     0.8988   2.242  0.02498 *  
+#LUSV           2.7011     0.8726   3.095  0.00197 ** 
+#LUPrimary      0.7912     0.7962   0.994  0.32038    
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+####Spiders
+```{r}
+db.t_spiders<-db.full.test[db.full.test$taxa=="Spiders",]
+db.t_spiders<-subset(db.t_spiders,!(LU %in% "Plantation" & taxa %in%"Spiders"))
+db.t_spiders<-subset(db.t_spiders,!(LU %in% "Urban" & taxa %in%"Spiders"))
+
+m_paper <- glmer(Alien.presence ~ LU + (1|SS/SSB) , 
+          data = db.t_spiders , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , optCtrl = list(maxfun = 1e5)),nAGQ = 1)
+m_adding <- glmer(Alien.presence ~ LU + (1|SS/SSB/Biome) , 
+          data = db.t_spiders , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , optCtrl = list(maxfun = 1e5)),nAGQ = 1)
+AIC(m_paper);AIC(m_adding)# deltAIC < 2
+anova(m_paper,m_adding)# p=0.9976, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below.
+```
+####Spiders summary result
+```{r}
+1)summary(m_paper) result
+#     AIC      BIC   logLik deviance df.resid 
+#   279.8    307.6   -133.9    267.8      756 
+#Scaled residuals: 
+#    Min      1Q  Median      3Q     Max 
+#-6.3057 -0.1560 -0.0291 -0.0269  6.8951 
+#Random effects:
+# Groups Name        Variance Std.Dev.
+# SSB:SS (Intercept)  0.5475  0.7399  
+# SS     (Intercept) 30.1081  5.4871  
+#Number of obs: 762, groups:  SSB:SS, 64; SS, 17
+#Fixed effects:
+#            Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)   0.4687     2.8588   0.164 0.869781    
+#LUCropland   -6.3060     1.8759  -3.362 0.000775 ***
+#LUSV         -4.5183     0.8801  -5.134 2.83e-07 ***
+#LUPrimary    -5.0581     0.8198  -6.170 6.84e-10 ***
+2) summary(m_adding) result
+#     AIC      BIC   logLik deviance df.resid 
+#   281.8    314.2   -133.9    267.8      755 
+#Scaled residuals: 
+#    Min      1Q  Median      3Q     Max 
+#-6.3057 -0.1560 -0.0291 -0.0269  6.8950 
+#Random effects:
+# Groups         Name        Variance Std.Dev.
+# Biome:(SSB:SS) (Intercept)  0.53410 0.7308  
+# SSB:SS         (Intercept)  0.01339 0.1157  
+# SS             (Intercept) 30.10916 5.4872  
+#Number of obs: 762, groups:  Biome:(SSB:SS), 64; SSB:SS, 64; SS, 17
+#Fixed effects:
+#            Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)   0.4686     2.8601   0.164 0.869871    
+#LUCropland   -6.3060     1.8759  -3.362 0.000775 ***
+#LUSV         -4.5183     0.8800  -5.134 2.83e-07 ***
+#LUPrimary    -5.0581     0.8198  -6.170 6.83e-10 ***
+```
+####plants
+```{r}
+
+db.t_plants<-db.full.test[db.full.test$taxa=="Vascular plants",]
+db.t_plants<-subset(db.t_plants,!(LU %in% "Urban" & taxa %in%"Vascular plants"))
+
+m_paper <- glmer(Alien.presence ~ LU + (1|SS/SSB) , 
+          data = db.t_plants , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , optCtrl = list(maxfun = 1e5)),nAGQ = 1)
+m_adding <- glmer(Alien.presence ~ LU + (1|SS/SSB/Biome) , 
+          data = db.t_plants , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , optCtrl = list(maxfun = 1e5)),nAGQ = 1)
+AIC(m_paper);AIC(m_adding)# deltAIC = 2
+anova(m_paper,m_adding)# p=0.992, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below.
+```
+####plants summary result
+```{r}
+1)summary(m_paper) result
+#     AIC      BIC   logLik deviance df.resid 
+#  2492.7   2537.5  -1239.4   2478.7     4446 
+#Scaled residuals: 
+#    Min      1Q  Median      3Q     Max 
+#-4.0974 -0.2290 -0.0770  0.1864  9.9806 
+#Random effects:
+# Groups Name        Variance Std.Dev.
+# SSB:SS (Intercept)  1.16    1.077   
+# SS     (Intercept) 12.10    3.479   
+#Number of obs: 4453, groups:  SSB:SS, 312; SS, 74
+#Fixed effects:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)  -1.60280    0.51040  -3.140 0.001688 ** 
+#LUCropland    0.06543    0.38310   0.171 0.864398    
+#LUPlantation  1.42020    0.40224   3.531 0.000414 ***
+#LUSV         -0.38901    0.31450  -1.237 0.216115    
+#LUPrimary    -1.08093    0.27972  -3.864 0.000111 ***
+2)summary(m_adding) result
+#     AIC      BIC   logLik deviance df.resid 
+#  2494.7   2545.9  -1239.4   2478.7     4445 
+#Scaled residuals: 
+#    Min      1Q  Median      3Q     Max 
+#-4.0974 -0.2290 -0.0770  0.1864  9.9806 
+#Random effects:
+# Groups         Name        Variance Std.Dev.
+# Biome:(SSB:SS) (Intercept)  0.00    0.000   
+# SSB:SS         (Intercept)  1.16    1.077   
+# SS             (Intercept) 12.11    3.479   
+#Number of obs: 4453, groups:  Biome:(SSB:SS), 313; SSB:SS, 312; SS, 74
+#Fixed effects:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)  -1.60284    0.51046  -3.140 0.001690 ** 
+#LUCropland    0.06542    0.38306   0.171 0.864390    
+#LUPlantation  1.42020    0.40222   3.531 0.000414 ***
+#LUSV         -0.38901    0.31449  -1.237 0.216103    
+#LUPrimary    -1.08093    0.27974  -3.864 0.000112 ***
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+#1_2)alien number
+```{r}
+db_alien <- subset(db.full.test , alien_freq > 0)
+levels(db_alien$LU)
+db_alien$LU<-
+  factor(db_alien$LU,c("Primary","SV","Plantation","Pasture","Cropland","Urban"))
+# reorder LU-intensity
+db_alien$LUI <- factor(db_alien$LUI , levels = c("Minimal use" , "Light use" , "Intense use" , "Cannot decide"))
+```
+
+#1_2_1 all taxa full model
+```{r}
+#1)the model in the paper, with SS/SSB in the random factor
+m_paper <- glmer(alien_freq ~ LU*LUI + (1|SS/SSB) , data = db_alien , family = poisson , 
+           control = glmerControl(optimizer = "bobyqa" , 
+                                  optCtrl = list(maxfun = 1e5)) , 
+           nAGQ = 1 , subset = as.vector(db_alien$LUI != "Cannot decide"))
+#2)adding model, with SS/SSB/Biome in the random factor
+m_adding <- glmer(alien_freq ~ LU*LUI + (1|SS/SSB/Biome) , data = db_alien , family = poisson , 
+           control = glmerControl(optimizer = "bobyqa" , 
+                                  optCtrl = list(maxfun = 1e5)) , 
+           nAGQ = 1 , subset = as.vector(db_alien$LUI != "Cannot decide"))
+AIC(m_paper);AIC(m_adding)# deltAIC = 2
+anova(m_paper,m_adding)# p=0.9998, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below
+```
+#### full model summary result
+```{r}
+1) summary(m_paper) result 
+#Fixed effects:
+#                            Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)                 -0.06383    0.08661  -0.737 0.461164    
+#LUSV                         0.65253    0.07748   8.422  < 2e-16 ***
+#LUPlantation                 0.76392    0.17701   4.316 1.59e-05 ***
+#LUPasture                    0.46741    0.12577   3.716 0.000202 ***
+#LUCropland                   0.65020    0.09894   6.571 4.98e-11 ***
+#LUUrban                      0.69431    0.13962   4.973 6.60e-07 ***
+#LUILight use                 0.35908    0.08207   4.375 1.21e-05 ***
+#LUIIntense use               0.59518    0.15120   3.936 8.27e-05 ***
+#LUSV:LUILight use           -0.48357    0.12369  -3.910 9.24e-05 ***
+#LUPlantation:LUILight use   -0.56605    0.20870  -2.712 0.006684 ** 
+#LUPasture:LUILight use      -0.24182    0.13717  -1.763 0.077920 .  
+#LUCropland:LUILight use     -0.81863    0.11914  -6.871 6.38e-12 ***
+#LUUrban:LUILight use        -0.38606    0.17971  -2.148 0.031692 *  
+#LUSV:LUIIntense use         -0.75428    0.19979  -3.775 0.000160 ***
+#LUPlantation:LUIIntense use -1.18991    0.26658  -4.464 8.06e-06 ***
+#LUPasture:LUIIntense use    -0.50711    0.24494  -2.070 0.038423 *  
+#LUCropland:LUIIntense use   -0.94745    0.18221  -5.200 2.00e-07 ***
+2) summary(m_adding) result
+#Fixed effects:
+#                            Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)                 -0.06383    0.08661  -0.737 0.461150    
+#LUSV                         0.65253    0.07748   8.421  < 2e-16 ***
+#LUPlantation                 0.76394    0.17700   4.316 1.59e-05 ***
+#LUPasture                    0.46741    0.12577   3.716 0.000202 ***
+#LUCropland                   0.65020    0.09894   6.571 4.98e-11 ***
+#LUUrban                      0.69431    0.13962   4.973 6.60e-07 ***
+#LUILight use                 0.35909    0.08207   4.375 1.21e-05 ***
+#LUIIntense use               0.59519    0.15120   3.936 8.27e-05 ***
+#LUSV:LUILight use           -0.48357    0.12369  -3.910 9.24e-05 ***
+#LUPlantation:LUILight use   -0.56606    0.20870  -2.712 0.006680 ** 
+#LUPasture:LUILight use      -0.24182    0.13717  -1.763 0.077921 .  
+#LUCropland:LUILight use     -0.81863    0.11914  -6.871 6.38e-12 ***
+#LUUrban:LUILight use        -0.38607    0.17971  -2.148 0.031688 *  
+#LUSV:LUIIntense use         -0.75429    0.19979  -3.775 0.000160 ***
+#LUPlantation:LUIIntense use -1.18993    0.26658  -4.464 8.05e-06 ***
+#LUPasture:LUIIntense use    -0.50711    0.24495  -2.070 0.038426 *  
+#LUCropland:LUIIntense use   -0.94745    0.18221  -5.200 2.00e-07 ***
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+###1_2_2 All taxa subset model
+```{r}
+m_paper  <- glmer(alien_freq ~ LU + (1|SS/SSB), data = db_alien , family = poisson)
+m_adding  <- glmer(alien_freq ~ LU + (1|SS/SSB/Biome), data = db_alien , family = poisson)
+
+AIC(m_paper);AIC(m_adding)# deltAIC = 2
+anova(m_paper,m_adding)# p=1, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below
+```
+#### subset model summary result
+```{r}
+1) summary(m_paper) result 
+#Fixed effects:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)   0.08292    0.07911   1.048    0.295    
+#LUSV          0.48326    0.05751   8.402  < 2e-16 ***
+#LUPlantation  0.40507    0.08828   4.588 4.47e-06 ***
+#LUPasture     0.33929    0.07547   4.495 6.94e-06 ***
+#LUCropland    0.22038    0.05616   3.924 8.71e-05 ***
+#LUUrban       0.51684    0.12187   4.241 2.23e-05 ***
+2) summary(m_adding) result
+#Fixed effects:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)   0.08292    0.07911   1.048    0.295    
+#LUSV          0.48331    0.05751   8.403  < 2e-16 ***
+#LUPlantation  0.40508    0.08828   4.588 4.47e-06 ***
+#LUPasture     0.33936    0.07547   4.496 6.91e-06 ***
+#LUCropland    0.22039    0.05616   3.924 8.71e-05 ***
+#LUUrban       0.51687    0.12187   4.241 2.22e-05 ***
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+###1_2_3 Each taxa subset model
+####Ants
+```{r}
+db.ant<-db_alien[db_alien$taxa=="Ants",]
+m_paper <- glmer(alien_freq ~ LU + (1|SS), data = db.ant , family = poisson)
+m_adding <- glmer(alien_freq ~ LU + (1|SS/Biome), data = db.ant , family = poisson)
+AIC(m_paper);AIC(m_adding)# deltAIC = 2
+anova(m_paper,m_adding)# p=0.9999, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below
+```
+####Ants summary result
+```{r}
+1) summary(m_paper) result 
+#Fixed effects:
+#              Estimate Std. Error z value Pr(>|z|)
+#(Intercept)  -0.008994   0.429794  -0.021    0.983
+#LUSV          0.022531   0.463909   0.049    0.961
+#LUPlantation  0.454500   0.471073   0.965    0.335
+#LUPasture     0.273305   0.489840   0.558    0.577
+#LUCropland    0.113251   0.522728   0.217    0.828
+#LUUrban       0.022476   0.535626   0.042    0.967
+
+2) summary(m_adding) result
+#Fixed effects:
+#              Estimate Std. Error z value Pr(>|z|)
+#(Intercept)  -0.008999   0.429794  -0.021    0.983
+#LUSV          0.022541   0.463909   0.049    0.961
+#LUPlantation  0.454521   0.471073   0.965    0.335
+#LUPasture     0.273320   0.489839   0.558    0.577
+#LUCropland    0.113297   0.522725   0.217    0.828
+#LUUrban       0.022482   0.535627   0.042    0.967
+```
+####Birds
+```{r}
+db.bird<-db_alien[db_alien$taxa=="Birds",]
+library(glmmTMB)
+m_paper <- glmmTMB(alien_freq ~ LU + (1|SS) , data = db.bird , family = compois)
+m_adding <- glmmTMB(alien_freq ~ LU + (1|SS/Biome) , data = db.bird , family = compois)
+AIC(m_paper);AIC(m_adding)# deltAIC = 2
+anova(m_paper,m_adding)# p=1, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below
+```
+####Birds summary result
+```{r}
+1) summary(m_paper) result 
+#Conditional model:
+#             Estimate Std. Error z value Pr(>|z|)   
+#(Intercept)   0.28359    0.13431   2.111  0.03474 * 
+#LUSV         -0.06944    0.12183  -0.570  0.56869   
+#LUPlantation  0.04900    0.10932   0.448  0.65398   
+#LUPasture    -0.16591    0.12628  -1.314  0.18890   
+#LUCropland    0.03496    0.09440   0.370  0.71110   
+#LUUrban       0.23713    0.07869   3.014  0.00258 **
+---
+2) summary(m_adding) result 
+#Conditional model:
+#             Estimate Std. Error z value Pr(>|z|)   
+#(Intercept)   0.28359    0.13431   2.111  0.03474 * 
+#LUSV         -0.06944    0.12183  -0.570  0.56871   
+#LUPlantation  0.04900    0.10932   0.448  0.65400   
+#LUPasture    -0.16589    0.12627  -1.314  0.18893   
+#LUCropland    0.03497    0.09440   0.370  0.71107   
+#LUUrban       0.23713    0.07869   3.014  0.00258 **
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+####Spiders
+```{r}
+db.spider<-db_alien[db_alien$taxa=="Spiders",]
+m_paper <- glmmTMB(alien_freq ~ LU + (1|SS) , data = db.spider , family = compois)
+m_adding <- glmmTMB(alien_freq ~ LU + (1|SS/Biome) , data = db.spider , family = compois)
+AIC(m_paper);AIC(m_adding)# deltAIC = 2
+anova(m_paper,m_adding)# p=1, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below
+```
+####spiders summary result
+```{r}
+1) summary(m_paper) result 
+#Conditional model:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)  -0.06773    0.16731  -0.405    0.686    
+#LUSV          0.21251    0.18476   1.150    0.250    
+#LUPlantation  0.03435    0.29220   0.118    0.906    
+#LUPasture     0.65478    0.15292   4.282 1.85e-05 ***
+#LUCropland    0.04204    0.32344   0.130    0.897  
+
+2) summary(m_adding) result 
+#Conditional model:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)  -0.06773    0.16731  -0.405    0.686    
+#LUSV          0.21250    0.18476   1.150    0.250    
+#LUPlantation  0.03434    0.29220   0.118    0.906    
+#LUPasture     0.65477    0.15292   4.282 1.85e-05 ***
+#LUCropland    0.04204    0.32344   0.130    0.897    
+#
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+###Plants
+```{r}
+db.plant<-db_alien[db_alien$taxa=="Vascular plants",]
+m_paper <- glmer(alien_freq ~ LU + (1|SS/SSB) , data = db.plant, family = poisson)
+m_adding <- glmer(alien_freq ~ LU + (1|SS/SSB/Biome) , data = db.plant, family = poisson)
+AIC(m_paper);AIC(m_adding)# deltAIC = 2
+anova(m_paper,m_adding)# p=1, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below
+
+```
+####Plants summary result
+```{r}
+1) summary(m_paper) result 
+#Fixed effects:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)   0.21244    0.12753   1.666 0.095745 .  
+#LUSV          0.61233    0.06720   9.112  < 2e-16 ***
+#LUPlantation  0.60310    0.12881   4.682 2.84e-06 ***
+#LUPasture     0.31308    0.09241   3.388 0.000704 ***
+#LUCropland    0.28589    0.06284   4.549 5.38e-06 ***
+#LUUrban       0.91834    0.22712   4.043 5.27e-05 *** 
+
+2) summary(m_adding) result 
+#Fixed effects:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)   0.21242    0.12753   1.666 0.095780 .  
+#LUSV          0.61233    0.06720   9.112  < 2e-16 ***
+#LUPlantation  0.60309    0.12881   4.682 2.84e-06 ***
+#LUPasture     0.31310    0.09241   3.388 0.000704 ***
+#LUCropland    0.28590    0.06284   4.550 5.38e-06 ***
+#LUUrban       0.91833    0.22712   4.043 5.27e-05 ***   
+#
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+
+#1_3)alien proportions
+```{r}
+db<-read.csv(file = '/.../dt.22.03.2022.csv',sep=";",stringsAsFactors=T)
+db$LU<-
+  factor(db$LU,c("Primary","SV","Plantation","Pasture","Cropland","Urban"))
+# reorder LU-intensity
+db$LUI <- factor(db$LUI , levels = c("Minimal use" , "Light use" , "Intense use" , "Cannot decide"))
+# remove observations with zero alien species
+db <- subset(db , alien_freq > 0)
+# removing papers which have no aliens throughout all sites is unnecessary here, as per definition only studies including aliens are kept
+# make proportion of aliens
+db$alien_prop <- db$alien_freq / db$pred_freq
+summary(db$alien_prop)
+# alien proportion contains 1, therefore apply lemon squeezer following Smithson M, Verkuilen J (2006). "A Better Lemon Squeezer? Maximum-Likelihood Regression with Beta-Distributed Dependent Variables." Psychological Methods, 11 (1), 54-71
+db$alien_prop_squeezed <- (db$alien_prop * (nrow(db)-1) + 0.5) / nrow(db)
+
+#add teh biomes
+db$Biome<-as.factor(db$Biome)
+levels(db$Biome)
+levels(db$Biome) <- c("Boreal", "Temperate","Tropic","Tropic",
+                      "Tropic","Temperate","Temperate","Temperate",
+                      "Temperate","Tropic","Tropic","Tropic",
+                      "Tropic","Boreal")
+```
+
+#1_3_1 all taxa full model
+```{r}
+#1)the model in the paper, with SS/SSB in the random factor
+library(glmmTMB)
+m_paper <- glmmTMB(alien_prop_squeezed ~ LU*LUI + (1|SS/SSB) , data = db[db$LUI != "Cannot decide" , ] , 
+                   family = beta_family)
+#2)adding model, with SS/SSB/Biome in the random factor
+m_adding <- glmmTMB(alien_prop_squeezed ~ LU*LUI + (1|SS/SSB/Biome) , data = db[db$LUI != "Cannot decide" , ] , 
+                    family = beta_family)
+AIC(m_paper);AIC(m_adding)# deltAIC = 2
+anova(m_paper,m_adding)# p=0.9996, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below
+```
+#### full model summary result
+```{r}
+1) summary(m_paper) result 
+#Conditional model:
+#                            Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)                 -1.28339    0.17722  -7.242 4.43e-13 ***
+#LUSV                         0.19001    0.09856   1.928 0.053876 .  
+#LUPlantation                 0.28103    0.22568   1.245 0.213030    
+#LUPasture                    0.19162    0.13958   1.373 0.169797    
+#LUCropland                   0.82033    0.15323   5.354 8.62e-08 ***
+#LUUrban                      0.58070    0.15981   3.634 0.000279 ***
+#LUILight use                 0.17019    0.09526   1.787 0.074000 .  
+#LUIIntense use               0.56171    0.20036   2.804 0.005055 ** 
+#LUSV:LUILight use           -0.16346    0.14505  -1.127 0.259787    
+#LUPlantation:LUILight use    0.03352    0.25031   0.134 0.893456    
+#LUPasture:LUILight use      -0.03894    0.15005  -0.260 0.795218    
+#LUCropland:LUILight use     -0.68359    0.18608  -3.674 0.000239 ***
+#LUUrban:LUILight use        -0.12085    0.19361  -0.624 0.532509    
+#LUSV:LUIIntense use         -0.20110    0.23029  -0.873 0.382533    
+#LUPlantation:LUIIntense use -0.04982    0.32667  -0.153 0.878792    
+#LUPasture:LUIIntense use    -0.43216    0.27919  -1.548 0.121645    
+#LUCropland:LUIIntense use   -1.03100    0.25802  -3.996 6.45e-05 ***
+#LUUrban:LUIIntense use      -0.19149    0.32285  -0.593 0.553092 
+2) summary(m_adding) result
+#Conditional model:
+#                            Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)                 -1.28339    0.17722  -7.242 4.43e-13 ***
+#LUSV                         0.19001    0.09856   1.928 0.053876 .  
+#LUPlantation                 0.28103    0.22568   1.245 0.213030    
+#LUPasture                    0.19162    0.13958   1.373 0.169796    
+#LUCropland                   0.82033    0.15323   5.354 8.62e-08 ***
+#LUUrban                      0.58070    0.15981   3.634 0.000279 ***
+#LUILight use                 0.17019    0.09526   1.787 0.073999 .  
+#LUIIntense use               0.56171    0.20036   2.804 0.005055 ** 
+#LUSV:LUILight use           -0.16346    0.14505  -1.127 0.259786    
+#LUPlantation:LUILight use    0.03352    0.25031   0.134 0.893459    
+#LUPasture:LUILight use      -0.03895    0.15005  -0.260 0.795215    
+#LUCropland:LUILight use     -0.68359    0.18608  -3.674 0.000239 ***
+#LUUrban:LUILight use        -0.12085    0.19361  -0.624 0.532509    
+#LUSV:LUIIntense use         -0.20110    0.23029  -0.873 0.382530    
+#LUPlantation:LUIIntense use -0.04982    0.32667  -0.153 0.878789    
+#LUPasture:LUIIntense use    -0.43216    0.27919  -1.548 0.121644    
+#LUCropland:LUIIntense use   -1.03100    0.25802  -3.996 6.45e-05 ***
+#LUUrban:LUIIntense use      -0.19150    0.32285  -0.593 0.553088
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+##1_3_2 All taxa subset model
+```{r}
+m_paper  <- glmmTMB(alien_prop_squeezed ~ LU + (1|SS) , data = db, family = beta_family)
+
+m_adding  <- glmmTMB(alien_prop_squeezed ~ LU + (1|SS/Biome) , data = db, family = beta_family)
+
+AIC(m_paper);AIC(m_adding)# deltAIC < 2
+anova(m_paper,m_adding)# p=0.1508, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below
+```
+#### subset model summary result
+```{r}
+1) summary(m_paper) result 
+#Conditional model:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)  -1.29041    0.16887  -7.641 2.15e-14 ***
+#LUSV          0.23633    0.07431   3.180  0.00147 ** 
+#LUPlantation  0.49153    0.09993   4.919 8.71e-07 ***
+#LUPasture     0.21934    0.09013   2.434  0.01495 *  
+#LUCropland    0.43971    0.07437   5.913 3.37e-09 ***
+#LUUrban       0.55370    0.11980   4.622 3.80e-06 ***
+2) summary(m_adding) result
+#Conditional model:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)  -1.28873    0.16890  -7.630 2.35e-14 ***
+#LUSV          0.23308    0.07428   3.138   0.0017 ** 
+#LUPlantation  0.48546    0.09973   4.868 1.13e-06 ***
+#LUPasture     0.21430    0.09001   2.381   0.0173 *  
+#LUCropland    0.43427    0.07431   5.844 5.09e-09 ***
+#LUUrban       0.56304    0.11995   4.694 2.68e-06 ***
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+##1_3_3 Each taxa subset model
+####Ants
+```{r}
+db.t<-db[db$taxa=="Ants",]
+m_paper <-  glmmTMB(alien_prop_squeezed ~ LU + (1|SS) , data = db.t, family = beta_family)
+m_adding <-  glmmTMB(alien_prop_squeezed ~ LU + (1|SS/Biome) , data = db.t, family = beta_family)
+
+AIC(m_paper);AIC(m_adding)# deltAIC = 2
+anova(m_paper,m_adding)# p=1, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below
+```
+####Ants summary result
+```{r}
+1) summary(m_paper) result 
+#Conditional model:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)  -0.82974    0.57488  -1.443 0.148927    
+#LUSV         -0.03219    0.53356  -0.060 0.951899    
+#LUPlantation  2.05453    0.58846   3.491 0.000481 ***
+#LUPasture     0.15155    0.56896   0.266 0.789957    
+#LUCropland    0.50976    0.60709   0.840 0.401089    
+#LUUrban       0.70547    0.61158   1.154 0.248701 
+
+2) summary(m_adding) result
+#Conditional model:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)  -0.82974    0.57488  -1.443 0.148927    
+#LUSV         -0.03218    0.53356  -0.060 0.951900    
+#LUPlantation  2.05453    0.58846   3.491 0.000481 ***
+#LUPasture     0.15155    0.56896   0.266 0.789957    
+#LUCropland    0.50976    0.60709   0.840 0.401089    
+#LUUrban       0.70547    0.61158   1.154 0.248701    
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+####Birds
+```{r}
+db.t<-db[db$taxa=="Birds",]
+m_paper <- glmmTMB(alien_prop_squeezed ~ LU + (1|SS/SSB) , data = db.t, family = beta_family)
+m_adding <- glmmTMB(alien_prop_squeezed ~ LU + (1|SS/SSB/Biome) , data = db.t, family = beta_family)
+AIC(m_paper);AIC(m_adding)# deltAIC = 2
+anova(m_paper,m_adding)# p=1, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below
+```
+####Birds summary result
+```{r}
+1) summary(m_paper) result 
+#Conditional model:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)  -2.00221    0.21004  -9.532  < 2e-16 ***
+#LUSV         -0.24673    0.14524  -1.699  0.08937 .  
+#LUPlantation -0.06341    0.12797  -0.495  0.62025    
+#LUPasture    -0.21935    0.17471  -1.256  0.20929    
+#LUCropland    0.19931    0.11510   1.732  0.08336 .  
+#LUUrban       0.29578    0.11435   2.587  0.00969 ** 
+---
+2) summary(m_adding) result 
+#Conditional model:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)  -2.00222    0.21004  -9.532  < 2e-16 ***
+#LUSV         -0.24673    0.14524  -1.699  0.08938 .  
+#LUPlantation -0.06341    0.12797  -0.495  0.62027    
+#LUPasture    -0.21935    0.17471  -1.256  0.20928    
+#LUCropland    0.19930    0.11510   1.732  0.08336 .  
+#LUUrban       0.29578    0.11435   2.587  0.00969 ** 
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+####mammals
+```{r}
+db.t<-db[db$taxa=="Mammals",]
+db.t<-db.t[db.t$LU!="Cropland",]
+m_paper <- glmmTMB(alien_prop_squeezed ~ LU + (1|SS) , data = db.t, family = beta_family)
+m_adding <- glmmTMB(alien_prop_squeezed ~ LU + (1|SS/Biome) , data = db.t, family = beta_family)
+AIC(m_paper);AIC(m_adding)# deltAIC = 2
+anova(m_paper,m_adding)# p=1, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below
+```
+###mammals result
+```{r}
+1) summary(m_paper) result 
+#Conditional model:
+#              Estimate Std. Error z value Pr(>|z|)  
+#(Intercept)   0.740566   0.315270   2.349   0.0188 *
+#LUSV         -0.009338   0.239385  -0.039   0.9689  
+#LUPlantation  0.319668   0.306275   1.044   0.2966  
+#LUPasture     0.316413   0.576314   0.549   0.5830 
+2) summary(m_adding) result 
+#Conditional model:
+#              Estimate Std. Error z value Pr(>|z|)  
+#(Intercept)   0.740573   0.315269   2.349   0.0188 *
+#LUSV         -0.009352   0.239385  -0.039   0.9688  
+#LUPlantation  0.319670   0.306275   1.044   0.2966  
+#LUPasture     0.316413   0.576314   0.549   0.5830  
+#---
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+
+
+####Spiders
+```{r}
+db.t<-db[db$taxa=="Spiders",]
+m_paper <- glmmTMB(alien_prop_squeezed ~ LU + (1|SS) , data = db.t, family = beta_family)
+m_adding <- glmmTMB(alien_prop_squeezed ~ LU + (1|SS/Biome) , data = db.t, family = beta_family)#not working
+#model is not working due to only 14 local assemblages in Tropic
+```
+
+
+###Plants
+```{r}
+db.t<-db[db$taxa=="Vascular plants",]
+m_paper <- glmmTMB(alien_prop_squeezed ~ LU + (1|SS/SSB) , data = db.t, family = beta_family)
+m_adding <- glmmTMB(alien_prop_squeezed ~ LU + (1|SS/SSB/Biome) , data = db.t, family = beta_family)
+
+AIC(m_paper);AIC(m_adding)# deltAIC < 2
+anova(m_paper,m_adding)# p=0.6703, no significance for the two models
+summary(m_paper);summary(m_adding) #No differences for the variables, see below
+
+```
+####Plants summary result
+```{r}
+1) summary(m_paper) result 
+#Conditional model:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)  -2.22714    0.18989 -11.728  < 2e-16 ***
+#LUSV          0.39857    0.06806   5.856 4.73e-09 ***
+#LUPlantation  0.47179    0.12758   3.698 0.000217 ***
+#LUPasture     0.23215    0.08404   2.762 0.005738 ** 
+#LUCropland    0.51732    0.06689   7.734 1.04e-14 ***
+#LUUrban       1.41972    0.25263   5.620 1.91e-08 ***
+
+2) summary(m_adding) result 
+#Conditional model:
+#             Estimate Std. Error z value Pr(>|z|)    
+#(Intercept)  -2.22617    0.18989 -11.724  < 2e-16 ***
+#LUSV          0.39755    0.06807   5.840 5.22e-09 ***
+#LUPlantation  0.47017    0.12757   3.686 0.000228 ***
+#LUPasture     0.23165    0.08402   2.757 0.005833 ** 
+#LUCropland    0.51642    0.06688   7.721 1.15e-14 ***
+#LUUrban       1.41321    0.25211   5.606 2.08e-08 ***   
+#
+#Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+
+#2) separate biomes into analysis
+```{r}
+levels(as.factor(db$Biome))
+dplyr::count(db,taxa,Biome)
+
+```
+###2_1)alien incidence
+
+###2_1_1 All taxa full model
+```{r}
+db.full.test <- subset(db,!(LU %in% "Urban" & LUI %in%"Intense use"))
+#1change the refernce for LU
+levels(db.full.test$LU)
+db.full.test$LU = factor(db.full.test$LU, levels=c("Primary","SV","Plantation","Cropland","Pasture","Urban"))
+db.full.test$LU = factor(db.full.test$LU, levels=c("Pasture","Urban","Cropland", "Plantation","SV", "Primary"))
+levels(db.full.test$LUI)
+db.full.test$LUI = factor(db.full.test$LUI, levels=c("Cannot decide","Minimal use","Light use","Intense use"))
+db.full.test$LUI = factor(db.full.test$LUI, levels=c("Intense use", "Light use","Minimal use","Cannot decide"))
+
+#1 the model in the paper, with SS/SSB in the random factor
+m_paper <- glmer(Alien.presence ~ LU*LUI + (1|SS/SSB) , 
+          data = db.full.test , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , 
+                                 optCtrl = list(maxfun = 1e5)),
+           nAGQ = 1 , subset = as.vector(db.full.test$LUI != "Cannot decide"))
+#2 for temperate
+db.full.temp<-db.full.test[db.full.test$Biome=="Temperate",]
+dplyr::count(db.full.temp,LU)
+
+m_temperate <- glmer(Alien.presence ~ LU*LUI + (1|SS/SSB) , 
+          data = db.full.temp , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , 
+                                 optCtrl = list(maxfun = 1e5)),
+           nAGQ = 1 , subset = as.vector(db.full.temp$LUI != "Cannot decide"))
+#3for tropic
+db.full.trop<-db.full.test[db.full.test$Biome=="Tropic",]
+dplyr::count(db.full.trop,LU)#ONLY 57 local assembalges
+db.full.trop<-db.full.trop[db.full.trop$LU!="Urban",]
+m_tropic <- glmer(Alien.presence ~ LU*LUI + (1|SS/SSB) , 
+          data = db.full.trop , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , 
+                                 optCtrl = list(maxfun = 1e5)),
+           nAGQ = 1 , subset = as.vector(db.full.trop$LUI != "Cannot decide"))
+
+summary(m_temperate);summary(m_tropic) #No differences for the variables, see below
+```
+#### full model for temperate
+```{r}
+#1) temperate biomes
+pred.full<-m_temperate %>% emmeans(specs = ~LU+LUI , type = "response") %>%pairs(infer = T , adjust = "tukey")%>%as.data.frame()
+#2selelct the rows with odds ratios that compared to primary
+data.2<-pred.full[grepl("Primary Minimal use",pred.full$contrast),]
+data.2$contrast<-as.character(data.2$contrast)
+#3add the reference level is 1.
+data.2[18,]<-c("Primary Minimal / Primary Minimal use",1, NA,NA,NA,NA,NA,NA,NA)
+library(stringr)
+data.2[c('name1', 'name2')] <- str_split_fixed(data.2$contrast, '/', 2)
+data.2[c('LU', 'LUI',"Use")] <- str_split_fixed(data.2$name1, ' ', 3)
+data.2$LUI<-paste(data.2$LUI,data.2$Use)
+names(data.2)
+#4select the columns
+data.3<-data.2[,c(1:9,12,13)]
+data.3$LUI<-as.factor(data.3$LUI)
+#5 set the factors
+levels(data.3$LUI)[1:4]<-c("Intense use","Light use","Minimal use","Minimal use")
+data.3$LU<-as.factor(data.3$LU)
+levels(data.3$LU)[4:5]<-c("Primary","Secondary")
+#6set the factor for LU-types/intensity
+data.3$LU = factor(data.3$LU, levels=c("Primary","Secondary",
+                                       "Plantation","Pasture","Cropland","Urban"))
+data.3$LUI = factor(data.3$LUI, levels=c("Minimal use","Light use","Intense use"))
+#make figure
+data.3$odds.ratio<-as.numeric(data.3$odds.ratio)
+data.3$SE<-as.numeric(data.3$SE)
+all<-ggplot(data.3 , aes(LU , odds.ratio,shape=LUI,color=LU))+
+  geom_errorbar(aes(ymin = odds.ratio-SE , ymax = odds.ratio+SE) ,width=0.4, 
+                position = position_dodge(width=.6))+
+  scale_y_continuous(name="Odds ratio of alien occurrence",
+                     limits=c(-5,48),breaks=seq(-5,45,15))+
+  geom_point(aes(shape=LUI),position = position_dodge(width=.6),size=3.5)+
+  scale_shape_manual(name="LU-intensity",values=c(16, 17, 15))+
+  scale_color_manual(name='LU-types',
+                     values = c("#2166AC","#4393C3","#92C5DE",
+                                "#F4A582","red","#B2182B"),
+                     label=c('Primary','Secondary','Plantation',
+                             'Pasture','Cropland','Urban'))+
+  guides(color=FALSE)+
+
+  annotate(geom="text", x=3.2, y=10, label="*",size=7,color="#92C5DE")+
+  
+  annotate(geom="text", x=3.8, y=19, label="***",size=7,color="#F4A582")+
+  annotate(geom="text", x=4.0, y=12.5, label="***",size=7,color="#F4A582")+ 
+  
+  annotate(geom="text", x=5.8, y=22, label="***",size=7,color="#B2182B")+ 
+  annotate(geom="text", x=6, y=17, label="**",size=7,color="#B2182B")+ 
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank() , 
+        axis.ticks.length=unit(0.08,"inch"),
+        panel.grid.major.y = element_line(size = 0.6 , colour = "grey90") ,
+        panel.spacing = unit(0,"lines") , 
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_text(colour = "black",angle = 25, 
+                                   size = 12,vjust = 0.6) ,
+        axis.text.y = element_text(colour = "black",  size = 12),
+        legend.title = element_text(face = 'bold'),
+        legend.background = element_blank(),
+        legend.box.background = element_blank(),
+        legend.key = element_blank(),
+        legend.direction =  "horizontal",legend.position = c(0.4,0.9)) 
+
+all
+ggsave(all,filename = '/Users/daijunliu/Downloads/fig2.a.temp.tiff',compression='lzw', width = 10,height = 3.2,dpi=200)
+```
+```{r}
+#1use emmeans to get the odds ratios
+pred.full<-m_tropic %>% emmeans(specs = ~LU+LUI , type = "response") %>%pairs(infer = T , 
+                                                                              adjust = "tukey")%>%as.data.frame()
+#2selelct the rows with odds ratios that compared to primary
+data.2<-pred.full[grepl("Primary Minimal use",pred.full$contrast),]
+data.2$contrast<-as.character(data.2$contrast)
+#3add the reference level is 1.
+data.2[15,]<-c("Primary Minimal / Primary Minimal use",1, NA,NA,NA,NA,NA,NA,NA)
+data.2[16,]<-c("Urban Minimal use / Primary Minimal use",NA, NA,NA,NA,NA,NA,NA,NA)
+data.2[17,]<-c("Urban Light use / Primary Minimal use",NA, NA,NA,NA,NA,NA,NA,NA)
+data.2[18,]<-c("Urban Intense use / Primary Minimal use",NA, NA,NA,NA,NA,NA,NA,NA)
+
+
+library(stringr)
+data.2[c('name1', 'name2')] <- str_split_fixed(data.2$contrast, '/', 2)
+data.2[c('LU', 'LUI',"Use")] <- str_split_fixed(data.2$name1, ' ', 3)
+data.2$LUI<-paste(data.2$LUI,data.2$Use)
+names(data.2)
+#4select the columns
+data.3<-data.2[,c(1:9,12,13)]
+data.3$LUI<-as.factor(data.3$LUI)
+#5 set the factors
+levels(data.3$LUI)[1:4]<-c("Intense use","Light use","Minimal use","Minimal use")
+data.3$LU<-as.factor(data.3$LU)
+levels(data.3$LU)[4:5]<-c("Primary","Secondary")
+#6set the factor for LU-types/intensity
+data.3$LU = factor(data.3$LU, levels=c("Primary","Secondary",
+                                       "Plantation","Pasture","Cropland","Urban"))
+data.3$LUI = factor(data.3$LUI, levels=c("Minimal use","Light use","Intense use"))
+
+data.3$odds.ratio<-as.numeric(data.3$odds.ratio)
+data.3$SE<-as.numeric(data.3$SE)
+all<-ggplot(data.3 , aes(LU , odds.ratio,shape=LUI,color=LU))+
+  geom_errorbar(aes(ymin = odds.ratio-SE , ymax = odds.ratio+SE) ,width=0.4, 
+                position = position_dodge(width=.6))+
+  scale_y_continuous(name="Odds ratio of alien occurrence",
+                     limits=c(-50,150),breaks=seq(-50,150,50))+
+  geom_point(aes(shape=LUI),position = position_dodge(width=.6),size=3.5)+
+  scale_shape_manual(name="LU-intensity",values=c(16, 17, 15))+
+  scale_color_manual(name='LU-types',
+                     values = c("#2166AC","#4393C3","#92C5DE",
+                                "#F4A582","red","#B2182B"),
+                     label=c('Primary','Secondary','Plantation',
+                             'Pasture','Cropland','Urban'))+
+  guides(color=FALSE)+
+  annotate(geom="text", x=1.81, y=20, label="***",size=7,color="#4393C3")+
+  annotate(geom="text", x=2, y=13, label="**",size=7,color="#4393C3")+
+  annotate(geom="text", x=2.81, y=15, label="**",size=7,color="#92C5DE")+
+  annotate(geom="text", x=3, y=30, label="**",size=7,color="#92C5DE")+
+  annotate(geom="text", x=4.2, y=60, label="***",size=7,color="#F4A582")+
+  annotate(geom="text", x=4.81, y=25, label="***",size=7,color="red")+
+  annotate(geom="text", x=5.2, y=130, label="***",size=7,color="red")+
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank() , 
+        axis.ticks.length=unit(0.08,"inch"),
+        panel.grid.major.y = element_line(size = 0.6 , colour = "grey90") ,
+        panel.spacing = unit(0,"lines") , 
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_text(colour = "black",angle = 25, 
+                                   size = 12,vjust = 0.6) ,
+        axis.text.y = element_text(colour = "black",  size = 12),
+        legend.title = element_text(face = 'bold'),
+        legend.background = element_blank(),
+        legend.box.background = element_blank(),
+        legend.key = element_blank(),
+        legend.direction =  "horizontal",legend.position = c(0.4,0.9)) 
+
+all
+ggsave(all,filename = '/.../fig2.c.tropic.tiff',compression='lzw', width = 10,height = 3.2,dpi=200)
+```
+
+
+###2_1_2 All taxa subset model
+```{r}
+#2 for temperate
+
+db.full.temp<-db[db$Biome=="Temperate",]
+dplyr::count(db.full.temp,LU)
+levels(db.full.temp$LU)
+db.full.temp$LU = factor(db.full.temp$LU, levels=c("Urban","Pasture","Cropland", "Plantation","SV", "Primary"))
+
+m_temperate <- glmer(Alien.presence ~ LU + (1|SS/SSB) , 
+          data = db.full.temp , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , 
+                                 optCtrl = list(maxfun = 1e5)),nAGQ = 1 )
+#3for tropic
+db.full.trop<-db[db$Biome=="Tropic",]
+dplyr::count(db.full.trop,LU)#only 61 local assembalge in urban
+db.full.trop<-db.full.trop[db.full.trop$LU!="Urban",]
+levels(db.full.trop$LU)
+db.full.trop$LU = factor(db.full.trop$LU, levels=c("Cropland","Pasture", "Plantation","SV", "Primary","Urban"))
+
+
+
+m_tropic <- glmer(Alien.presence ~ LU + (1|SS/SSB) , 
+          data = db.full.trop , family = binomial , 
+          control = glmerControl(optimizer = "bobyqa" , 
+                                 optCtrl = list(maxfun = 1e5)),nAGQ = 1 )
+
+summary(m_temperate);summary(m_tropic) #No differences for the variables, see below
+```
+###temperate
+```{r}
+
+#### subset model summary result
+#try the pairwise comparison 
+pred.full<-m_temperate %>% emmeans(specs = ~LU , type = "response") %>%pairs(infer = T , adjust = "tukey")%>%as.data.frame()
+#get the odds ratios to primary
+pred.full_2<-pred.full[grepl("Primary",pred.full$contrast),]
+pred.full_2$contrast<-as.character(pred.full_2$contrast)
+#add the reference
+pred.full_2[6,]<-c("Primary / Primary",1,NA, NA,NA,NA,NA,NA,NA)
+library(stringr)
+pred.full_2[c('name1', 'name2')] <- str_split_fixed(pred.full_2$contrast, '/', 2)
+names(pred.full_2)
+names(pred.full_2)[10]<-c("LU")
+pred.full_2$LU<-as.factor(pred.full_2$LU)
+levels(pred.full_2$LU)<-c("Cropland","Pasture","Plantation",
+                          "Primary","Secondary", "Urban")
+pred.full_2$LU<-
+  factor(pred.full_2$LU,c("Primary","Secondary","Plantation",
+                          "Pasture","Cropland","Urban"))
+names(pred.full_2)[2]<-c("Odds")
+pred.full_2$Odds<-as.numeric(pred.full_2$Odds)
+pred.full_2$SE<-as.numeric(pred.full_2$SE)
+pred.full_2$LU<-as.factor(pred.full_2$LU)
+
+all.LU<-ggplot(pred.full_2 , aes(LU , Odds,color=LU))+
+  geom_errorbar(aes(ymin = Odds-SE , ymax = Odds+SE) ,width=0.4, 
+                position = position_dodge(width=.6))+
+  scale_y_continuous(name="Odds ratio of alien occurrence",
+                     limits=c(0,30),breaks=seq(0,30,10))+
+  geom_point(position = position_dodge(width=.6),size=3)+
+  scale_color_manual(name='LU-types',
+                     values = c("#2166AC","#4393C3","#92C5DE",
+                                "#F4A582","red","#B2182B"),
+                     label=c('Primary V.','Secondary V.','Plantation',
+                             'Pasture','Cropland','Urban'))+
+  
+  annotate(geom="text", x=2, y=4, label="*",size=6,color="#4393C3")+
+  annotate(geom="text", x=3, y=6, label="**",size=6,color="#92C5DE")+
+  annotate(geom="text", x=4, y=7.5, label="***",size=6,color="#F4A582")+
+  annotate(geom="text", x=5, y=10, label="***",size=6,color="red")+
+  annotate(geom="text", x=6, y=15, label="***",size=6,color="#B2182B")+
+  guides(colour = guide_legend(nrow = 1),shape=guide_legend(nrow = 1))+
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank() , 
+        axis.ticks.length=unit(0.08,"inch"),
+        panel.grid.major.y = element_line(size = 0.6 , colour = "grey90") ,
+        panel.spacing = unit(0,"lines") , 
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_text(colour = "black",angle = 25, 
+                                   size = 10,vjust = 0.6) ,
+        axis.text.y = element_text(colour = "black",  size = 10),
+        legend.position = "none")
+all.LU
+ggsave(all.LU,filename = '/.../fig2.b.tiff',compression='lzw',width =3.5,height = 3.2,dpi=200)
+```
+###tropical
+
+```{r}
+#### subset model summary result
+#try the pairwise comparison 
+pred.full<-m_tropic %>% emmeans(specs = ~LU , type = "response") %>%pairs(infer = T , adjust = "tukey")%>%as.data.frame()
+#get the odds ratios to primary
+pred.full_2<-pred.full[grepl("Primary",pred.full$contrast),]
+pred.full_2$contrast<-as.character(pred.full_2$contrast)
+#add the reference
+pred.full_2[5,]<-c("Urban / Primary",NA,NA, NA,NA,NA,NA,NA,NA)
+pred.full_2[6,]<-c("Primary / Primary",1,NA, NA,NA,NA,NA,NA,NA)
+library(stringr)
+pred.full_2[c('name1', 'name2')] <- str_split_fixed(pred.full_2$contrast, '/', 2)
+names(pred.full_2)
+names(pred.full_2)[10]<-c("LU")
+pred.full_2$LU<-as.factor(pred.full_2$LU)
+levels(pred.full_2$LU)<-c("Cropland","Pasture","Plantation","Primary","Secondary","Urban")
+pred.full_2$LU<-
+  factor(pred.full_2$LU,c("Primary","Secondary","Plantation",
+                          "Pasture","Cropland","Urban"))
+names(pred.full_2)[2]<-c("Odds")
+pred.full_2$Odds<-as.numeric(pred.full_2$Odds)
+pred.full_2$SE<-as.numeric(pred.full_2$SE)
+pred.full_2$LU<-as.factor(pred.full_2$LU)
+
+all.LU<-ggplot(pred.full_2 , aes(LU , Odds,color=LU))+
+  geom_errorbar(aes(ymin = Odds-SE , ymax = Odds+SE) ,width=0.4, 
+                position = position_dodge(width=.6))+
+  scale_y_continuous(name="Odds ratio of alien occurrence",
+                     limits=c(0,30),breaks=seq(0,30,10))+
+  geom_point(position = position_dodge(width=.6),size=3)+
+  scale_color_manual(name='LU-types',
+                     values = c("#2166AC","#4393C3","#92C5DE",
+                                "#F4A582","red","#B2182B"),
+                     label=c('Primary V.','Secondary V.','Plantation',
+                             'Pasture','Cropland','Urban'))+
+  
+  annotate(geom="text", x=2, y=7, label="***",size=6,color="#4393C3")+
+  annotate(geom="text", x=3, y=15, label="***",size=6,color="#92C5DE")+
+  annotate(geom="text", x=4, y=7.5, label="***",size=6,color="#F4A582")+
+  annotate(geom="text", x=5, y=20, label="***",size=6,color="red")+
+
+  guides(colour = guide_legend(nrow = 1),shape=guide_legend(nrow = 1))+
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank() , 
+        axis.ticks.length=unit(0.08,"inch"),
+        panel.grid.major.y = element_line(size = 0.6 , colour = "grey90") ,
+        panel.spacing = unit(0,"lines") , 
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_text(colour = "black",angle = 25, 
+                                   size = 10,vjust = 0.6) ,
+        axis.text.y = element_text(colour = "black",  size = 10),
+        legend.position = "none")
+all.LU
+ggsave(all.LU,filename = '/.../fig2.D.tiff',compression='lzw',width =4.5,height = 3,dpi=200)
+
+```
+###2_2_1non-native species richness
+```{r}
+#1)temperate
+db_alien<-db[db$alien_freq>0,]
+#temperate biomes
+db_alien_temperate<-db_alien[db_alien$Biome=="Temperate",]
+m <- glmer(alien_freq ~ LU + (1|SS/SSB), data = db_alien_temperate , family = poisson)
+# check overdispersion with DHARMa package to decide if OLRE is needed.
+simulateResiduals(m , use.u = T) %>% testDispersion() # slightly overdispersed, but seems OK enough!
+################
+# select random effects structure
+m2 <- update(m , . ~ . -(1|SS/SSB) + (1|SS))
+anova(m , m2) # remove block (both models very similar, therefore keep the simpler one)
+# repeat for model with short database
+ sds <- VarCorr(m) %>% as.data.frame()
+ sd.total <- sqrt(sds[1 , 5]^2 + sds[2 , 5]^2)
+ 
+ pred.full <- m %>% emmeans(specs = ~LU , type = "response") %>%
+  cld(bias.adj = T , sigma = sd.total , sort = F , adjust = "bonferroni" , Letters = letters) %>% as.data.frame()
+names(pred.full)[2]<-"prob"
+
+
+levels(pred.full$LU)[1:2]<-c("Primary","Secondary")
+# plot
+all<-ggplot(pred.full , aes(LU , prob,color=LU))+
+  geom_errorbar(aes(ymin = prob-SE , ymax = prob+SE) ,width=0.2, 
+                position = position_dodge(width=.6))+
+  scale_y_continuous(name="Number of non-native species",
+                     limits=c(-0.2,6),breaks=seq(0,6,2))+
+  geom_point(position = position_dodge(width=.6),size=3)+
+  scale_color_manual(name='LU-types',
+                     values = c("#2166AC","#4393C3","#92C5DE",
+                                "#F4A582","red","#B2182B"),
+                     label=c('Primary','Secondary','Plantation',
+                             'Pasture','Cropland','Urban'))+
+  annotate(geom="text", x=1, y=2, label="a",size=4,color="#2166AC")+
+  annotate(geom="text", x=2, y=3.5, label="b",size=4,color="#4393C3")+
+  annotate(geom="text", x=3, y=3.5, label="bc",size=4,color="#92C5DE")+
+  annotate(geom="text", x=4, y=3, label="bc",size=4,color="#F4A582")+
+  annotate(geom="text", x=5, y=2.3, label="ac",size=4,color="red")+
+  annotate(geom="text", x=6, y=4, label="b",size=4,color="#B2182B")+
+  guides(colour = guide_legend(nrow = 1),shape=guide_legend(nrow = 1))+
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank() , 
+        axis.ticks.length=unit(0.08,"inch"),
+        panel.grid.major.y = element_line(size = 0.6 , colour = "grey90") ,
+        panel.spacing = unit(0,"lines") , 
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size=13),
+        axis.text.x = element_text(colour = "black",angle = 25, 
+                                   size = 12,vjust = 0.6) ,
+        axis.text.y = element_text(colour = "black",  size = 12),
+        legend.position = "none")
+all
+ggsave(all,filename = '/.../all_sp_temp.tiff',width = 3.5,height = 3,dpi = 200)
+```
+
+```{r}
+#2 tropical
+db_alien<-db[db$alien_freq>0,]
+#tropical biomes
+db_alien_tropical<-db_alien[db_alien$Biome=="Tropic",]
+db_alien_tropical$LU<-as.factor(db_alien_tropical$LU)
+dplyr::count(db_alien_tropical,LU)
+db_alien_tropical<-db_alien_tropical[db_alien_tropical$LU!="Urban",]
+m <- glmer(alien_freq ~ LU + (1|SS/SSB), data = db_alien_tropical , family = poisson)
+# check overdispersion with DHARMa package to decide if OLRE is needed.
+simulateResiduals(m , use.u = T) %>% testDispersion() # slightly overdispersed, but seems OK enough!
+################
+# select random effects structure
+m2 <- update(m , . ~ . -(1|SS/SSB) + (1|SS))
+anova(m , m2) # remove block (both models very similar, therefore keep the simpler one)
+# repeat for model with short database
+ sds <- VarCorr(m) %>% as.data.frame()
+ sd.total <- sqrt(sds[1 , 5]^2 + sds[2 , 5]^2)
+ 
+ pred.full <- m %>% emmeans(specs = ~LU , type = "response") %>%
+  cld(bias.adj = T , sigma = sd.total , sort = F , adjust = "bonferroni" , Letters = letters) %>% as.data.frame()
+names(pred.full)[2]<-"prob"
+pred.full$LU<-as.character(pred.full$LU)
+pred.full[6,]<-c("Urban",NA,NA,NA,NA,NA,"a")
+pred.full$LU<-as.factor(pred.full$LU)
+levels(pred.full$LU)[1:6]<-c("Cropland","Pasture","Plantation","Primary","Secondary","Urban")
+pred.full$prob<-as.numeric(pred.full$prob)
+pred.full$SE<-as.numeric(pred.full$SE)
+
+pred.full$LU<-
+  factor(pred.full$LU,c("Primary","Secondary","Plantation",
+                          "Pasture","Cropland","Urban"))
+# plot
+all<-ggplot(pred.full , aes(LU , prob,color=LU))+
+  geom_errorbar(aes(ymin = prob-SE , ymax = prob+SE) ,width=0.2, 
+                position = position_dodge(width=.6))+
+  scale_y_continuous(name="Number of non-native species",
+                     limits=c(-0.2,6),breaks=seq(0,6,2))+
+  geom_point(position = position_dodge(width=.6),size=3)+
+  scale_color_manual(name='LU-types',
+                     values = c("#2166AC","#4393C3","#92C5DE",
+                                "#F4A582","red","#B2182B"),
+                     label=c('Primary','Secondary','Plantation',
+                             'Pasture','Cropland','Urban'))+
+  annotate(geom="text", x=1, y=2, label="a",size=4,color="#2166AC")+
+  annotate(geom="text", x=2, y=2.5, label="ab",size=4,color="#4393C3")+
+  annotate(geom="text", x=3, y=2.5, label="ab",size=4,color="#92C5DE")+
+  annotate(geom="text", x=4, y=2.4, label="ab",size=4,color="#F4A582")+
+  annotate(geom="text", x=5, y=2.7, label="b",size=4,color="red")+
+
+  guides(colour = guide_legend(nrow = 1),shape=guide_legend(nrow = 1))+
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank() , 
+        axis.ticks.length=unit(0.08,"inch"),
+        panel.grid.major.y = element_line(size = 0.6 , colour = "grey90") ,
+        panel.spacing = unit(0,"lines") , 
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size=13),
+        axis.text.x = element_text(colour = "black",angle = 25, 
+                                   size = 12,vjust = 0.6) ,
+        axis.text.y = element_text(colour = "black",  size = 12),
+        legend.position = "none")
+all
+ggsave(all,filename = '/.../all_sp_trop.tiff',width = 3.5,height = 3,dpi = 200)
+```
+###2.3 non-native proportion
+```{r}
+db_alien<-db[db$alien_freq>0,]
+# make proportion of aliens
+db_alien$alien_prop <- db_alien$alien_freq / db_alien$pred_freq
+summary(db_alien$alien_prop)
+
+db_alien$alien_prop_squeezed <- (db_alien$alien_prop * (nrow(db_alien)-1) + 0.5) / nrow(db_alien)
+
+```
+
+```{r}
+#1) TEMPERATE BIOMES
+db_alien_temp<-db_alien[db_alien$Biome=="Temperate",]
+dplyr::count(db_alien_temp,LU)
+m <- glmmTMB(alien_prop_squeezed ~ LU + (1|SS/SSB) , data = db_alien_temp, family = beta_family)
+# check overdispersion with DHARMa package to decide if OLRE is needed. Simulate residuals conditional on random effects. 
+simulateResiduals(m , use.u = T) %>% testDispersion() # slightly overdispersed, but seems OK enough!
+################
+# select random effects structure
+m2 <- update(m , . ~ . -(1|SS/SSB) + (1|SS))
+anova(m , m2) # remove block (both models very similar, therefore keep the simpler one)
+m <- m2
+VarCorr(m)
+sd.total <- sqrt(1.0339 ^2)
+pred.full <- m %>% emmeans(specs = ~LU , type = "response") %>%
+  cld(bias.adj = T , sigma = sd.total , sort = F , adjust = "bonferroni" , Letters = letters) %>% 
+  as.data.frame()
+names(pred.full)[2]<-"prob"
+levels(pred.full$LU)[2]<-"Secondary"
+
+all<-ggplot(pred.full , aes(LU , prob,color=LU))+
+  geom_errorbar(aes(ymin = prob-SE , ymax = prob+SE) ,width=0.2, 
+                position = position_dodge(width=.6))+
+  scale_y_continuous(name="Non-native proportions",
+                     limits=c(0,1),breaks=seq(0,0.9,0.3))+
+  geom_point(position = position_dodge(width=.6),size=3)+
+  scale_color_manual(name='LU-types',
+                     values = c("#2166AC","#4393C3","#92C5DE",
+                                "#F4A582","red","#B2182B"),
+                     label=c('Primary','Secondary','Plantation',
+                             'Pasture','Cropland','Urban'))+
+  annotate(geom="text", x=1, y=0.38, label="a",size=4,color="#2166AC")+
+  annotate(geom="text", x=2, y=0.43, label="bc",size=4,color="#4393C3")+
+  annotate(geom="text", x=3, y=0.47, label="d",size=4,color="#92C5DE")+
+  annotate(geom="text", x=4, y=0.43, label="ab",size=4,color="#F4A582")+
+  annotate(geom="text", x=5, y=0.47, label="bcd",size=4,color="red")+
+  annotate(geom="text", x=6, y=0.49, label="cd",size=4,color="#B2182B")+
+  guides(colour = guide_legend(nrow = 1),shape=guide_legend(nrow = 1))+
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank() , 
+        axis.ticks.length=unit(0.08,"inch"),
+        panel.grid.major.y = element_line(size = 0.6 , colour = "grey90") ,
+        panel.spacing = unit(0,"lines") , 
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size=13),
+        axis.text.x = element_text(colour = "black",angle = 25, 
+                                   size = 12,vjust = 0.6) ,
+        axis.text.y = element_text(colour = "black",  size = 12),
+        legend.position = "none")
+all
+ggsave(all,filename = '/.../all_prop_temp.tiff',width = 3.5,height = 3,dpi = 200)
+```
+
+```{r}
+#1) TEMPERATE BIOMES
+db_alien_tropic<-db_alien[db_alien$Biome=="Tropic",]
+dplyr::count(db_alien_tropic,LU)
+db_alien_tropic<-db_alien_tropic[db_alien_tropic$LU!="Urban",]
+m <- glmmTMB(alien_prop_squeezed ~ LU + (1|SS/SSB) , data = db_alien_tropic, family = beta_family)
+# check overdispersion with DHARMa package to decide if OLRE is needed. Simulate residuals conditional on random effects. 
+simulateResiduals(m , use.u = T) %>% testDispersion() # slightly overdispersed, but seems OK enough!
+################
+# select random effects structure
+m2 <- update(m , . ~ . -(1|SS/SSB) + (1|SS))
+anova(m , m2) # remove block (both models very similar, therefore keep the simpler one)
+m <- m2
+VarCorr(m)
+sd.total <- sqrt(1.0339 ^2)
+pred.full <- m %>% emmeans(specs = ~LU , type = "response") %>%
+  cld(bias.adj = T , sigma = sd.total , sort = F , adjust = "bonferroni" , Letters = letters) %>% 
+  as.data.frame()
+names(pred.full)[2]<-"prob"
+levels(pred.full$LU)[2]<-"Secondary"
+pred.full$LU<-as.character(pred.full$LU)
+pred.full[6,]<-c("Urban",NA,NA,NA,NA,NA,"a")
+pred.full$LU<-as.factor(pred.full$LU)
+levels(pred.full$LU)[1:6]<-c("Cropland","Pasture","Plantation","Primary","Secondary","Urban")
+pred.full$prob<-as.numeric(pred.full$prob)
+pred.full$SE<-as.numeric(pred.full$SE)
+
+pred.full$LU<-
+  factor(pred.full$LU,c("Primary","Secondary","Plantation",
+                          "Pasture","Cropland","Urban"))
+
+
+all<-ggplot(pred.full , aes(LU , prob,color=LU))+
+  geom_errorbar(aes(ymin = prob-SE , ymax = prob+SE) ,width=0.2, 
+                position = position_dodge(width=.6))+
+  scale_y_continuous(name="Non-native proportions",
+                     limits=c(0,1),breaks=seq(0,0.9,0.3))+
+  geom_point(position = position_dodge(width=.6),size=3)+
+  scale_color_manual(name='LU-types',
+                     values = c("#2166AC","#4393C3","#92C5DE",
+                                "#F4A582","red","#B2182B"),
+                     label=c('Primary','Secondary','Plantation',
+                             'Pasture','Cropland','Urban'))+
+  annotate(geom="text", x=1, y=0.4, label="a",size=4,color="#2166AC")+
+  annotate(geom="text", x=2, y=0.43, label="a",size=4,color="#4393C3")+
+  annotate(geom="text", x=3, y=0.47, label="ab",size=4,color="#92C5DE")+
+  annotate(geom="text", x=4, y=0.46, label="ab",size=4,color="#F4A582")+
+  annotate(geom="text", x=5, y=0.48, label="b",size=4,color="red")+
+
+  guides(colour = guide_legend(nrow = 1),shape=guide_legend(nrow = 1))+
+  theme_bw()+
+  theme(panel.grid.major.x = element_blank() , 
+        axis.ticks.length=unit(0.08,"inch"),
+        panel.grid.major.y = element_line(size = 0.6 , colour = "grey90") ,
+        panel.spacing = unit(0,"lines") , 
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size=13),
+        axis.text.x = element_text(colour = "black",angle = 25, 
+                                   size = 12,vjust = 0.6) ,
+        axis.text.y = element_text(colour = "black",  size = 12),
+        legend.position = "none")
+all
+ggsave(all,filename = '/.../all_prop_tropic.tiff',width = 3.5,height = 3,dpi = 200)
+
+```
+
+
+
+
