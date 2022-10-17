@@ -31,6 +31,7 @@ library(DHARMa)
 ```
 #import the data
 ```{r}
+#open the data from the data-and-code-for-alien-invasion-in-local-assembalge
 db<-read.csv(file = '/.../data.csv',sep=";",stringsAsFactors=T)
 #the alien ratio is wrong
 db$alien_all<-with(db,alien_freq/pred_freq)
@@ -767,7 +768,8 @@ summary(m_paper);summary(m_adding) #No differences for the variables, see below
 
 #1_3)alien proportions
 ```{r}
-db<-read.csv(file = '/.../dt.22.03.2022.csv',sep=";",stringsAsFactors=T)
+#open the data from the data-and-code-for-alien-invasion-in-local-assembalge
+db<-read.csv(file = '/.../data.csv',sep=";",stringsAsFactors=T)
 db$LU<-
   factor(db$LU,c("Primary","SV","Plantation","Pasture","Cropland","Urban"))
 # reorder LU-intensity
