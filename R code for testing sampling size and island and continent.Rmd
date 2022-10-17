@@ -29,7 +29,7 @@ library(DHARMa)
 ```
 #import the data
 ```{r}
-db<-read.csv(file = '/.../dt.22.03.2022.csv',sep=";",stringsAsFactors=T)
+db<-read.csv(file = '/.../data.csv',sep=";",stringsAsFactors=T)
 #the alien ratio is wrong
 db$alien_all<-with(db,alien_freq/pred_freq)
 levels(as.factor(db$LU))
